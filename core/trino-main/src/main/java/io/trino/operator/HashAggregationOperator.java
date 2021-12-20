@@ -430,6 +430,7 @@ public class HashAggregationOperator
         }
 
         // process the current page; save the unfinished work if we are waiting for memory
+        // tutaj beda budwane juz grupy dla tej strony.
         unfinishedWork = aggregationBuilder.processPage(page);
         if (unfinishedWork.process()) {
             unfinishedWork = null;

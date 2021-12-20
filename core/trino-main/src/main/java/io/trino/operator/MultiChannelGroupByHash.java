@@ -74,7 +74,9 @@ public class MultiChannelGroupByHash
     private int hashCapacity;
     private int maxFill;
     private int mask;
+    // hash -> miejsca w stronie przechowujacego informacje o grupie
     private long[] groupAddressByHash;
+    // hash to id groupy, ktora to jest
     private int[] groupIdsByHash;
     private byte[] rawHashByHashPosition;
 
@@ -284,6 +286,7 @@ public class MultiChannelGroupByHash
 
         // look for an empty slot or a slot containing this key
         int groupId = -1;
+        // Tu sprawdzimy czy czasem dla obecnego wiersza nie ma juz grupy.
         while (groupAddressByHash[hashPosition] != -1) {
             if (positionNotDistinctFromCurrentRow(groupAddressByHash[hashPosition], hashPosition, position, page, (byte) rawHash, channels)) {
                 // found an existing slot for this key
@@ -298,6 +301,7 @@ public class MultiChannelGroupByHash
 
         // did we find an existing group?
         if (groupId < 0) {
+            // nie ma jeszcze takiej grupy, to ja musimy stworzyc
             groupId = addNewGroup(hashPosition, position, page, rawHash);
         }
         return groupId;
@@ -306,6 +310,7 @@ public class MultiChannelGroupByHash
     private int addNewGroup(int hashPosition, int position, Page page, long rawHash)
     {
         // add the row to the open page
+        // Tworzymy tutaj nowa grupe, zapisujemy jej
         for (int i = 0; i < channels.length; i++) {
             int hashChannel = channels[i];
             Type type = types.get(i);
@@ -448,6 +453,8 @@ public class MultiChannelGroupByHash
 
     private static long getHashPosition(long rawHash, int mask)
     {
+        // rawHash to pewnie jakis prymitywny hash liczony na samych wartosciach, a teraz my jeszcze
+        // przeliczymy hash sensowniej, murmurem, ktory ma jakies tam dobre wlasnosci
         return murmurHash3(rawHash) & mask;
     }
 

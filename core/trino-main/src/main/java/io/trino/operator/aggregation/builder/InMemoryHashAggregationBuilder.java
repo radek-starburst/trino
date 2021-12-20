@@ -39,7 +39,6 @@ import io.trino.type.BlockTypeOperators;
 import it.unimi.dsi.fastutil.ints.AbstractIntIterator;
 import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntIterators;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
