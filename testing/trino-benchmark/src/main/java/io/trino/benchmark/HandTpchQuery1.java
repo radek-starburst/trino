@@ -120,6 +120,9 @@ public class HandTpchQuery1
                 Optional.empty(),
                 10_000,
                 Optional.of(DataSize.of(16, MEGABYTE)),
+                false,
+                Optional.of(DataSize.of(16, MEGABYTE)),
+                Optional.empty(),
                 new JoinCompiler(localQueryRunner.getTypeOperators()),
                 localQueryRunner.getBlockTypeOperators(),
                 false);

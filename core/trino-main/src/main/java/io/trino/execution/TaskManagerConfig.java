@@ -21,6 +21,7 @@ import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import io.airlift.units.Duration;
 import io.airlift.units.MaxDuration;
+import io.airlift.units.MinDataSize;
 import io.airlift.units.MinDuration;
 import io.trino.util.PowerOfTwo;
 
@@ -48,7 +49,9 @@ public class TaskManagerConfig
     private boolean perOperatorCpuTimerEnabled = true;
     private boolean taskCpuTimerEnabled = true;
     private boolean statisticsCpuTimerEnabled = true;
-    private DataSize maxPartialAggregationMemoryUsage = DataSize.of(256, Unit.MEGABYTE);
+    private DataSize maxPartialAggregationMemoryUsage = DataSize.of(16, Unit.MEGABYTE);
+    private DataSize adaptivePartialAggregationMemoryTotalLimit = DataSize.of(256, Unit.MEGABYTE);
+    private boolean adaptivePartialAggregationMemoryEnabled = true;
     private DataSize maxPartialTopNMemory = DataSize.of(16, Unit.MEGABYTE);
     private DataSize maxLocalExchangeBufferSize = DataSize.of(32, Unit.MEGABYTE);
     private DataSize maxIndexMemoryUsage = DataSize.of(64, Unit.MEGABYTE);
@@ -155,10 +158,37 @@ public class TaskManagerConfig
         return maxPartialAggregationMemoryUsage;
     }
 
+    @NotNull
+    @MinDataSize("0MB")
+    public DataSize getAdaptivePartialAggregationMemoryTotalLimit()
+    {
+        return adaptivePartialAggregationMemoryTotalLimit;
+    }
+
+    @NotNull
+    public boolean isAdaptivePartialAggregationMemoryEnabled()
+    {
+        return adaptivePartialAggregationMemoryEnabled;
+    }
+
     @Config("task.max-partial-aggregation-memory")
     public TaskManagerConfig setMaxPartialAggregationMemoryUsage(DataSize maxPartialAggregationMemoryUsage)
     {
         this.maxPartialAggregationMemoryUsage = maxPartialAggregationMemoryUsage;
+        return this;
+    }
+
+    @Config("task.total-limit-adaptive-partial-aggregation-memory")
+    public TaskManagerConfig setAdaptivePartialAggregationMemoryTotalLimit(DataSize adaptivePartialAggregationMemoryTotalLimit)
+    {
+        this.adaptivePartialAggregationMemoryTotalLimit = adaptivePartialAggregationMemoryTotalLimit;
+        return this;
+    }
+
+    @Config("task.adaptive-partial-aggregation-memory-enabled")
+    public TaskManagerConfig setAdaptivePartialAggregationMemoryEnabled(boolean adaptivePartialAggregationMemoryEnabled)
+    {
+        this.adaptivePartialAggregationMemoryEnabled = adaptivePartialAggregationMemoryEnabled;
         return this;
     }
 

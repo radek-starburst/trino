@@ -43,6 +43,7 @@ import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntIterators;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -60,6 +61,9 @@ public class InMemoryHashAggregationBuilder
     private final boolean partial;
     private final OptionalLong maxPartialMemory;
     private final UpdateMemory updateMemory;
+    private final boolean adaptivePartialAggregationMemoryEnabled;
+    private final Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit;
+    private final Optional<Integer> groupingSetCount;
 
     private boolean full;
 
@@ -72,6 +76,9 @@ public class InMemoryHashAggregationBuilder
             Optional<Integer> hashChannel,
             OperatorContext operatorContext,
             Optional<DataSize> maxPartialMemory,
+            boolean adaptivePartialAggregationMemoryEnabled,
+            Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit,
+            Optional<Integer> groupingSetCount,
             JoinCompiler joinCompiler,
             BlockTypeOperators blockTypeOperators,
             UpdateMemory updateMemory)
@@ -84,6 +91,9 @@ public class InMemoryHashAggregationBuilder
                 hashChannel,
                 operatorContext,
                 maxPartialMemory,
+                adaptivePartialAggregationMemoryEnabled,
+                adaptivePartialAggregationMemoryTotalLimit,
+                groupingSetCount,
                 Optional.empty(),
                 joinCompiler,
                 blockTypeOperators,
@@ -99,6 +109,9 @@ public class InMemoryHashAggregationBuilder
             Optional<Integer> hashChannel,
             OperatorContext operatorContext,
             Optional<DataSize> maxPartialMemory,
+            boolean adaptivePartialAggregationMemoryEnabled,
+            Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit,
+            Optional<Integer> groupingSetCount,
             Optional<Integer> overwriteIntermediateChannelOffset,
             JoinCompiler joinCompiler,
             BlockTypeOperators blockTypeOperators,
@@ -114,7 +127,11 @@ public class InMemoryHashAggregationBuilder
                 blockTypeOperators,
                 updateMemory);
         this.partial = step.isOutputPartial();
-        this.maxPartialMemory = maxPartialMemory.map(dataSize -> OptionalLong.of(dataSize.toBytes())).orElseGet(OptionalLong::empty);
+//        this.maxPartialMemory = maxPartialMemory.map(dataSize -> OptionalLong.of(dataSize.toBytes())).orElseGet(OptionalLong::empty);
+        this.adaptivePartialAggregationMemoryEnabled = adaptivePartialAggregationMemoryEnabled;
+        this.adaptivePartialAggregationMemoryTotalLimit = requireNonNull(adaptivePartialAggregationMemoryTotalLimit, "adaptivePartialAggregationMemoryEnabled is null");
+        this.groupingSetCount = groupingSetCount;
+        this.maxPartialMemory = resolvePartialAggregationMaxMemoryUsageSize(maxPartialMemory);
         this.updateMemory = requireNonNull(updateMemory, "updateMemory is null");
 
         // wrapper each function with an aggregator
@@ -426,5 +443,23 @@ public class InMemoryHashAggregationBuilder
             types.add(new Aggregator(factory, step, Optional.empty()).getType());
         }
         return types.build();
+    }
+
+    private OptionalLong resolvePartialAggregationMaxMemoryUsageSize(Optional<DataSize> maxPartialMemory)
+    {
+        if (!adaptivePartialAggregationMemoryEnabled) {
+            return maxPartialMemory.map(dataSize -> OptionalLong.of(dataSize.toBytes())).orElseGet(OptionalLong::empty);
+        }
+        DataSize zero = DataSize.succinctBytes(0);
+        DataSize adaptiveThreshold = Collections.min(ImmutableList.of(
+                DataSize.of(16L * ((long) groupingSetCount.orElse(0)), DataSize.Unit.MEGABYTE),
+                adaptivePartialAggregationMemoryTotalLimit.orElse(zero)));
+        long result = Collections.max(ImmutableList.of(
+                adaptiveThreshold,
+                maxPartialMemory.orElse(zero))).toBytes();
+        if (result == 0L) {
+            return OptionalLong.empty();
+        }
+        return OptionalLong.of(result);
     }
 }

@@ -60,6 +60,9 @@ public class HashAggregationBenchmark
                 Optional.empty(),
                 100_000,
                 Optional.of(DataSize.of(16, MEGABYTE)),
+                false,
+                Optional.of(DataSize.of(16, MEGABYTE)),
+                Optional.empty(),
                 new JoinCompiler(localQueryRunner.getTypeOperators()),
                 localQueryRunner.getBlockTypeOperators(),
                 false);

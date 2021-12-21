@@ -34,6 +34,8 @@ import io.trino.sql.planner.plan.AggregationNode.Step;
 import io.trino.sql.planner.plan.PlanNodeId;
 import io.trino.type.BlockTypeOperators;
 
+import javax.swing.text.html.Option;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -50,6 +52,9 @@ public class HashAggregationOperator
         implements Operator
 {
     private static final double MERGE_WITH_MEMORY_RATIO = 0.9;
+    private final Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit;
+    private final Boolean adaptivePartialAggregationMemoryEnabled;
+    private final Optional<Integer> groupingSetCount;
 
     public static class HashAggregationOperatorFactory
             implements OperatorFactory
@@ -67,6 +72,8 @@ public class HashAggregationOperator
 
         private final int expectedGroups;
         private final Optional<DataSize> maxPartialMemory;
+        private final Boolean adaptivePartialAggregationMemoryEnabled;
+        private final Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit;
         private final boolean spillEnabled;
         private final DataSize memoryLimitForMerge;
         private final DataSize memoryLimitForMergeWithMemory;
@@ -74,6 +81,7 @@ public class HashAggregationOperator
         private final JoinCompiler joinCompiler;
         private final BlockTypeOperators blockTypeOperators;
         private final boolean useSystemMemory;
+        private final Optional<Integer> groupingSetCount;
 
         private boolean closed;
 
@@ -90,6 +98,9 @@ public class HashAggregationOperator
                 Optional<Integer> groupIdChannel,
                 int expectedGroups,
                 Optional<DataSize> maxPartialMemory,
+                boolean adaptivePartialAggregationMemoryEnabled,
+                Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit,
+                Optional<Integer> groupingSetCount,
                 JoinCompiler joinCompiler,
                 BlockTypeOperators blockTypeOperators,
                 boolean useSystemMemory)
@@ -106,6 +117,9 @@ public class HashAggregationOperator
                     groupIdChannel,
                     expectedGroups,
                     maxPartialMemory,
+                    adaptivePartialAggregationMemoryEnabled,
+                    adaptivePartialAggregationMemoryTotalLimit,
+                    groupingSetCount,
                     false,
                     DataSize.of(0, MEGABYTE),
                     DataSize.of(0, MEGABYTE),
@@ -130,6 +144,9 @@ public class HashAggregationOperator
                 Optional<Integer> groupIdChannel,
                 int expectedGroups,
                 Optional<DataSize> maxPartialMemory,
+                boolean adaptivePartialAggregationMemoryEnabled,
+                Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit,
+                Optional<Integer> groupingSetCount,
                 boolean spillEnabled,
                 DataSize unspillMemoryLimit,
                 SpillerFactory spillerFactory,
@@ -149,6 +166,9 @@ public class HashAggregationOperator
                     groupIdChannel,
                     expectedGroups,
                     maxPartialMemory,
+                    adaptivePartialAggregationMemoryEnabled,
+                    adaptivePartialAggregationMemoryTotalLimit,
+                    groupingSetCount,
                     spillEnabled,
                     unspillMemoryLimit,
                     DataSize.succinctBytes((long) (unspillMemoryLimit.toBytes() * MERGE_WITH_MEMORY_RATIO)),
@@ -172,6 +192,9 @@ public class HashAggregationOperator
                 Optional<Integer> groupIdChannel,
                 int expectedGroups,
                 Optional<DataSize> maxPartialMemory,
+                boolean adaptivePartialAggregationMemoryEnabled,
+                Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit,
+                Optional<Integer> groupingSetCount,
                 boolean spillEnabled,
                 DataSize memoryLimitForMerge,
                 DataSize memoryLimitForMergeWithMemory,
@@ -192,6 +215,9 @@ public class HashAggregationOperator
             this.accumulatorFactories = ImmutableList.copyOf(accumulatorFactories);
             this.expectedGroups = expectedGroups;
             this.maxPartialMemory = requireNonNull(maxPartialMemory, "maxPartialMemory is null");
+            this.adaptivePartialAggregationMemoryEnabled = requireNonNull(adaptivePartialAggregationMemoryEnabled, "adaptivePartialAggregationMemoryEnabled is null");
+            this.adaptivePartialAggregationMemoryTotalLimit = requireNonNull(adaptivePartialAggregationMemoryTotalLimit, "adaptivePartialAggregationMemoryTotalLimit is null");
+            this.groupingSetCount = requireNonNull(groupingSetCount, "groupingSetCount is null");
             this.spillEnabled = spillEnabled;
             this.memoryLimitForMerge = requireNonNull(memoryLimitForMerge, "memoryLimitForMerge is null");
             this.memoryLimitForMergeWithMemory = requireNonNull(memoryLimitForMergeWithMemory, "memoryLimitForMergeWithMemory is null");
@@ -219,6 +245,9 @@ public class HashAggregationOperator
                     groupIdChannel,
                     expectedGroups,
                     maxPartialMemory,
+                    adaptivePartialAggregationMemoryEnabled,
+                    adaptivePartialAggregationMemoryTotalLimit,
+                    groupingSetCount,
                     spillEnabled,
                     memoryLimitForMerge,
                     memoryLimitForMergeWithMemory,
@@ -251,6 +280,9 @@ public class HashAggregationOperator
                     groupIdChannel,
                     expectedGroups,
                     maxPartialMemory,
+                    adaptivePartialAggregationMemoryEnabled,
+                    adaptivePartialAggregationMemoryTotalLimit,
+                    groupingSetCount,
                     spillEnabled,
                     memoryLimitForMerge,
                     memoryLimitForMergeWithMemory,
@@ -305,6 +337,9 @@ public class HashAggregationOperator
             Optional<Integer> groupIdChannel,
             int expectedGroups,
             Optional<DataSize> maxPartialMemory,
+            boolean adaptivePartialAggregationMemoryEnabled,
+            Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit,
+            Optional<Integer> groupingSetCount,
             boolean spillEnabled,
             DataSize memoryLimitForMerge,
             DataSize memoryLimitForMergeWithMemory,
@@ -328,6 +363,9 @@ public class HashAggregationOperator
         this.produceDefaultOutput = produceDefaultOutput;
         this.expectedGroups = expectedGroups;
         this.maxPartialMemory = requireNonNull(maxPartialMemory, "maxPartialMemory is null");
+        this.adaptivePartialAggregationMemoryEnabled = adaptivePartialAggregationMemoryEnabled;
+        this.adaptivePartialAggregationMemoryTotalLimit = requireNonNull(adaptivePartialAggregationMemoryTotalLimit, "adaptivePartialAggregationMemoryEnabled is null");
+        this.groupingSetCount = requireNonNull(groupingSetCount, "groupingSetCount is null");
         this.types = toTypes(groupByTypes, step, accumulatorFactories, hashChannel);
         this.spillEnabled = spillEnabled;
         this.memoryLimitForMerge = requireNonNull(memoryLimitForMerge, "memoryLimitForMerge is null");
@@ -397,6 +435,9 @@ public class HashAggregationOperator
                         hashChannel,
                         operatorContext,
                         maxPartialMemory,
+                        adaptivePartialAggregationMemoryEnabled,
+                        adaptivePartialAggregationMemoryTotalLimit,
+                        groupingSetCount,
                         joinCompiler,
                         blockTypeOperators,
                         () -> {

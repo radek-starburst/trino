@@ -378,6 +378,8 @@ public class LocalExecutionPlanner
     private final TypeOperators typeOperators;
     private final BlockTypeOperators blockTypeOperators;
     private final TableExecuteContextManager tableExecuteContextManager;
+    private final DataSize adaptivePartialAggregationMemoryTotalLimit;
+    private final boolean adaptivePartialAggregationMemoryEnabled;
 
     @Inject
     public LocalExecutionPlanner(
@@ -423,6 +425,8 @@ public class LocalExecutionPlanner
         this.singleStreamSpillerFactory = requireNonNull(singleStreamSpillerFactory, "singleStreamSpillerFactory is null");
         this.partitioningSpillerFactory = requireNonNull(partitioningSpillerFactory, "partitioningSpillerFactory is null");
         this.maxPartialAggregationMemorySize = taskManagerConfig.getMaxPartialAggregationMemoryUsage();
+        this.adaptivePartialAggregationMemoryTotalLimit = taskManagerConfig.getAdaptivePartialAggregationMemoryTotalLimit();
+        this.adaptivePartialAggregationMemoryEnabled = taskManagerConfig.isAdaptivePartialAggregationMemoryEnabled();
         this.maxPagePartitioningBufferSize = taskManagerConfig.getMaxPagePartitioningBufferSize();
         this.maxLocalExchangeBufferSize = taskManagerConfig.getMaxLocalExchangeBufferSize();
         this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
@@ -3132,6 +3136,9 @@ public class LocalExecutionPlanner
                         // Disabling partial pre-aggregation memory limit effectively
                         // turns PARTIAL aggregation into INTERMEDIATE.
                         Optional.empty(),
+                        adaptivePartialAggregationMemoryEnabled,
+                        Optional.of(adaptivePartialAggregationMemoryTotalLimit),
+                        Optional.empty(),
                         true);
             }).orElse(new DevNullOperatorFactory(context.getNextOperatorId(), node.getId()));
 
@@ -3211,6 +3218,9 @@ public class LocalExecutionPlanner
                         outputMapping,
                         200,
                         // final aggregation ignores partial pre-aggregation memory limit
+                        Optional.empty(),
+                        adaptivePartialAggregationMemoryEnabled,
+                        Optional.of(adaptivePartialAggregationMemoryTotalLimit),
                         Optional.empty(),
                         true);
             }).orElse(new DevNullOperatorFactory(context.getNextOperatorId(), node.getId()));
@@ -3675,6 +3685,9 @@ public class LocalExecutionPlanner
                     mappings,
                     10_000,
                     Optional.of(maxPartialAggregationMemorySize),
+                    adaptivePartialAggregationMemoryEnabled,
+                    Optional.of(adaptivePartialAggregationMemoryTotalLimit),
+                    Optional.of(node.getGroupingSetCount()),
                     node.getStep().isOutputPartial());
             return new PhysicalOperation(operatorFactory, mappings.build(), context, source);
         }
@@ -3697,6 +3710,9 @@ public class LocalExecutionPlanner
                 ImmutableMap.Builder<Symbol, Integer> outputMappings,
                 int expectedGroups,
                 Optional<DataSize> maxPartialAggregationMemorySize,
+                boolean adaptivePartialAggregationMemoryEnabled,
+                Optional<DataSize> adaptivePartialAggregationMemoryTotalLimit,
+                Optional<Integer> groupingSetCount,
                 boolean useSystemMemory)
         {
             List<Symbol> aggregationOutputSymbols = new ArrayList<>();
@@ -3762,6 +3778,9 @@ public class LocalExecutionPlanner
                         groupIdChannel,
                         expectedGroups,
                         maxPartialAggregationMemorySize,
+                        adaptivePartialAggregationMemoryEnabled,
+                        adaptivePartialAggregationMemoryTotalLimit,
+                        groupingSetCount,
                         spillEnabled,
                         unspillMemoryLimit,
                         spillerFactory,

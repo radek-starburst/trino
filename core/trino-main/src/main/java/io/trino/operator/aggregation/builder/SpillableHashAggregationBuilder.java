@@ -32,6 +32,8 @@ import io.trino.sql.gen.JoinCompiler;
 import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.type.BlockTypeOperators;
 
+import javax.xml.crypto.Data;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -339,6 +341,9 @@ public class SpillableHashAggregationBuilder
                 hashChannel,
                 operatorContext,
                 Optional.of(DataSize.succinctBytes(0)),
+                false,
+                Optional.of(DataSize.succinctBytes(0)),
+                Optional.empty(),
                 joinCompiler,
                 blockTypeOperators,
                 () -> {
