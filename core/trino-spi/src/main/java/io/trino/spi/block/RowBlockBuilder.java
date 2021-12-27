@@ -154,6 +154,9 @@ public class RowBlockBuilder
             throw new IllegalStateException("Expected current entry to be closed but was opened");
         }
         currentEntryOpened = true;
+        // On chce tego tu reuzywac zamiast ciagle tworzyc nowy obiekt.
+        // On bierze tu to [0] cyhba dlatego, ze zakladamy, ze to jest po prostu liczba pozycji,
+        // tj. tyle ile fieldBlockBuilder ma na poczatku pozycji tyle maja wszystkie field-buildery!
         return new SingleRowBlockWriter(fieldBlockBuilders[0].getPositionCount(), fieldBlockBuilders);
     }
 

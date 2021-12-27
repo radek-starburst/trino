@@ -385,6 +385,7 @@ public class Driver
                 // if the current operator is not finished and next operator isn't blocked and needs input...
                 if (!current.isFinished() && getBlockedFuture(next).isEmpty() && next.needsInput()) {
                     // get an output page from current operator
+                    // dany operator (np. HashAggregationOperator moze miec to wolane wiele razy), ale na 99.99% w ramach jednego watku.
                     Page page = current.getOutput();
                     current.getOperatorContext().recordGetOutput(operationTimer, page);
 
