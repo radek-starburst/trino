@@ -286,7 +286,7 @@ public class MultiChannelGroupByHash
 
         // look for an empty slot or a slot containing this key
         int groupId = -1;
-        // Tu sprawdzimy czy czasem dla obecnego wiersza nie ma juz grupy.
+        // Tu sprawdzimy czy czasem dla obecnego wiersza nie ma juz grupy (a dokladniej miejsca, w ktorym zapisujemy informacje o grupie, np. offset w Page)
         while (groupAddressByHash[hashPosition] != -1) {
             if (positionNotDistinctFromCurrentRow(groupAddressByHash[hashPosition], hashPosition, position, page, (byte) rawHash, channels)) {
                 // found an existing slot for this key
