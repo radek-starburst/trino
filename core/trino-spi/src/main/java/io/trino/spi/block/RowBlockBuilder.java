@@ -42,6 +42,7 @@ public class RowBlockBuilder
     private int[] fieldBlockOffsets;
     private boolean[] rowIsNull;
     private final BlockBuilder[] fieldBlockBuilders;
+    private final SingleRowBlockWriter singleRowBlockWriter;
 
     private boolean currentEntryOpened;
     private boolean hasNullRow;
@@ -64,6 +65,7 @@ public class RowBlockBuilder
         this.fieldBlockOffsets = requireNonNull(fieldBlockOffsets, "fieldBlockOffsets is null");
         this.rowIsNull = requireNonNull(rowIsNull, "rowIsNull is null");
         this.fieldBlockBuilders = requireNonNull(fieldBlockBuilders, "fieldBlockBuilders is null");
+        this.singleRowBlockWriter = new SingleRowBlockWriter(fieldBlockBuilders[0].getPositionCount(), fieldBlockBuilders);
     }
 
     private static BlockBuilder[] createFieldBlockBuilders(List<Type> fieldTypes, BlockBuilderStatus blockBuilderStatus, int expectedEntries)
@@ -154,7 +156,19 @@ public class RowBlockBuilder
             throw new IllegalStateException("Expected current entry to be closed but was opened");
         }
         currentEntryOpened = true;
-        return new SingleRowBlockWriter(fieldBlockBuilders[0].getPositionCount(), fieldBlockBuilders);
+        singleRowBlockWriter.reset(fieldBlockBuilders[0].getPositionCount());
+        return singleRowBlockWriter;
+    }
+
+    // It is only draft to be throw away. It is the fastest way to compare benchmarks. If results will be promising, it will be written prettier.
+    public SingleRowBlockWriter beginBlockEntryAlloc()
+    {
+        if (currentEntryOpened) {
+            throw new IllegalStateException("Expected current entry to be closed but was opened");
+        }
+        currentEntryOpened = true;
+        singleRowBlockWriter.reset(fieldBlockBuilders[0].getPositionCount());
+        return singleRowBlockWriter;
     }
 
     @Override

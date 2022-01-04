@@ -21,7 +21,7 @@ import java.util.List;
 public abstract class AbstractSingleRowBlock
         implements Block
 {
-    protected final int rowIndex;
+    protected int rowIndex;
 
     protected AbstractSingleRowBlock(int rowIndex)
     {

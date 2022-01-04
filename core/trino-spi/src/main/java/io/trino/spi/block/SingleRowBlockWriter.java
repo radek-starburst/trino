@@ -27,7 +27,7 @@ public class SingleRowBlockWriter
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleRowBlockWriter.class).instanceSize();
 
     private final BlockBuilder[] fieldBlockBuilders;
-    private final long initialBlockBuilderSize;
+    private long initialBlockBuilderSize;
     private int positionsWritten;
 
     private int currentFieldIndexToWrite;
@@ -37,11 +37,15 @@ public class SingleRowBlockWriter
     {
         super(rowIndex);
         this.fieldBlockBuilders = fieldBlockBuilders;
+        this.initialBlockBuilderSize = computeInitialBlockBuilderSize();
+    }
+
+    private long computeInitialBlockBuilderSize() {
         long initialBlockBuilderSize = 0;
         for (BlockBuilder fieldBlockBuilder : fieldBlockBuilders) {
             initialBlockBuilderSize += fieldBlockBuilder.getSizeInBytes();
         }
-        this.initialBlockBuilderSize = initialBlockBuilderSize;
+        return initialBlockBuilderSize;
     }
 
     /**
@@ -60,6 +64,15 @@ public class SingleRowBlockWriter
         }
         fieldBlockBuilderReturned = true;
         return fieldBlockBuilders[fieldIndex];
+    }
+
+    public void reset(int rowIndex)
+    {
+        this.rowIndex = rowIndex;
+        this.currentFieldIndexToWrite = 0;
+        this.initialBlockBuilderSize = computeInitialBlockBuilderSize();
+        this.positionsWritten = 0;
+        this.fieldBlockBuilderReturned = false;
     }
 
     @Override
