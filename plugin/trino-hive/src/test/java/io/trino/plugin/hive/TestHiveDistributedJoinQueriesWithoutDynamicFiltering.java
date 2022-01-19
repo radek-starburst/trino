@@ -28,7 +28,7 @@ public class TestHiveDistributedJoinQueriesWithoutDynamicFiltering
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setExtraProperties(ImmutableMap.of("enable-dynamic-filtering", "false"))
                 .setInitialTables(REQUIRED_TPCH_TABLES)
                 .build();

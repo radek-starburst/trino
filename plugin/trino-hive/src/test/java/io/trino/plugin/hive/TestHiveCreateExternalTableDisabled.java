@@ -36,7 +36,7 @@ public class TestHiveCreateExternalTableDisabled
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setHiveProperties(ImmutableMap.of(
                         "hive.non-managed-table-writes-enabled", "true",
                         "hive.non-managed-table-creates-enabled", "false"))

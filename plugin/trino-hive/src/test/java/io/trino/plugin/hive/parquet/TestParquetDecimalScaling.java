@@ -15,7 +15,7 @@ package io.trino.plugin.hive.parquet;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
-import io.trino.plugin.hive.HiveQueryRunner;
+import io.trino.plugin.hive.MyHiveQueryRunner;
 import io.trino.plugin.hive.parquet.write.TestMapredParquetOutputFormat;
 import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.MaterializedResult;
@@ -85,7 +85,7 @@ public class TestParquetDecimalScaling
     {
         basePath = getBasePath();
 
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 // create nation so tpch schema got created
                 .setInitialTables(ImmutableList.of(NATION))
                 .setBaseDataDir(Optional.of(basePath))

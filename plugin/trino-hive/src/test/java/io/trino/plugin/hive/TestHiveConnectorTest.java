@@ -110,9 +110,9 @@ import static io.trino.plugin.hive.HiveColumnHandle.FILE_MODIFIED_TIME_COLUMN_NA
 import static io.trino.plugin.hive.HiveColumnHandle.FILE_SIZE_COLUMN_NAME;
 import static io.trino.plugin.hive.HiveColumnHandle.PARTITION_COLUMN_NAME;
 import static io.trino.plugin.hive.HiveColumnHandle.PATH_COLUMN_NAME;
-import static io.trino.plugin.hive.HiveQueryRunner.HIVE_CATALOG;
-import static io.trino.plugin.hive.HiveQueryRunner.TPCH_SCHEMA;
-import static io.trino.plugin.hive.HiveQueryRunner.createBucketedSession;
+import static io.trino.plugin.hive.MyHiveQueryRunner.HIVE_CATALOG;
+import static io.trino.plugin.hive.MyHiveQueryRunner.TPCH_SCHEMA;
+import static io.trino.plugin.hive.MyHiveQueryRunner.createBucketedSession;
 import static io.trino.plugin.hive.HiveTableProperties.AUTO_PURGE;
 import static io.trino.plugin.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
 import static io.trino.plugin.hive.HiveTableProperties.BUCKET_COUNT_PROPERTY;
@@ -188,7 +188,7 @@ public class TestHiveConnectorTest
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        DistributedQueryRunner queryRunner = HiveQueryRunner.builder()
+        DistributedQueryRunner queryRunner = MyHiveQueryRunner.builder()
                 .setHiveProperties(ImmutableMap.of(
                         "hive.allow-register-partition-procedure", "true",
                         // Reduce writer sort buffer size to ensure SortingFileWriter gets used

@@ -25,7 +25,7 @@ public class TestHiveDistributedOrderByQueries
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setInitialTables(getTables())
                 .build();
     }

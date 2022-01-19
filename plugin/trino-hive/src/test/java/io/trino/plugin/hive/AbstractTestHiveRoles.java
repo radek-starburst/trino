@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
-import static io.trino.plugin.hive.HiveQueryRunner.HIVE_CATALOG;
+import static io.trino.plugin.hive.MyHiveQueryRunner.HIVE_CATALOG;
 import static io.trino.spi.type.VarcharType.createUnboundedVarcharType;
 import static io.trino.testing.QueryAssertions.assertContains;
 import static io.trino.testing.QueryAssertions.assertEqualsIgnoreOrder;
@@ -53,7 +53,7 @@ abstract class AbstractTestHiveRoles
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .addExtraProperty("deprecated.legacy-catalog-roles", String.valueOf(legacyCommands))
                 .build();
     }

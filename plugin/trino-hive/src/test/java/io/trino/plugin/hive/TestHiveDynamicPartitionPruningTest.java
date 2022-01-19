@@ -30,7 +30,7 @@ public class TestHiveDynamicPartitionPruningTest
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setExtraProperties(EXTRA_PROPERTIES)
                 .setHiveProperties(ImmutableMap.of("hive.dynamic-filtering.wait-timeout", "1h"))
                 .setInitialTables(REQUIRED_TABLES)

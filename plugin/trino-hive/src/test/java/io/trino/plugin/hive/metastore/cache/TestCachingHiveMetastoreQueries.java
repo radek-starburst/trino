@@ -16,7 +16,7 @@ package io.trino.plugin.hive.metastore.cache;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import io.trino.plugin.hive.HiveQueryRunner;
+import io.trino.plugin.hive.MyHiveQueryRunner;
 import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.QueryRunner;
 import org.testng.annotations.Test;
@@ -35,7 +35,7 @@ public class TestCachingHiveMetastoreQueries
             throws Exception
     {
         verify(nodeCount > 1, "this test requires a multinode query runner");
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setHiveProperties(ImmutableMap.of("hive.metastore-cache-ttl", "60m"))
                 // only so that tpch schema is created (TODO https://github.com/trinodb/trino/issues/6861)
                 .setInitialTables(ImmutableList.of(NATION))

@@ -32,7 +32,7 @@ public class TestShowStats
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 // create nation so tpch schema got created
                 .setInitialTables(ImmutableList.of(NATION))
                 .setNodeCount(1)

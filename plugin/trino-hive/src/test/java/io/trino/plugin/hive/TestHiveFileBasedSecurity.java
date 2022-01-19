@@ -38,7 +38,7 @@ public class TestHiveFileBasedSecurity
             throws Exception
     {
         String path = new File(Resources.getResource(getClass(), "security.json").toURI()).getPath();
-        queryRunner = HiveQueryRunner.builder()
+        queryRunner = MyHiveQueryRunner.builder()
                 .setHiveProperties(ImmutableMap.of(
                         "hive.security", "file",
                         "security.config-file", path))

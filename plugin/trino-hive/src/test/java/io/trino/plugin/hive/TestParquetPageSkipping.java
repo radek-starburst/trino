@@ -34,7 +34,7 @@ public class TestParquetPageSkipping
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setHiveProperties(
                         ImmutableMap.of(
                                 "parquet.use-column-index", "true",

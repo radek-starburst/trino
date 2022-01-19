@@ -30,7 +30,7 @@ public class TestHiveConnectorSmokeTest
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setInitialTables(REQUIRED_TPCH_TABLES)
                 .build();
     }

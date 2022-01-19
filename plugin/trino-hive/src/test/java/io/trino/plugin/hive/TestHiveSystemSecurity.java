@@ -28,7 +28,7 @@ public class TestHiveSystemSecurity
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .setHiveProperties(ImmutableMap.of("hive.security", "system"))
                 .setInitialTables(ImmutableList.of())
                 .build();
