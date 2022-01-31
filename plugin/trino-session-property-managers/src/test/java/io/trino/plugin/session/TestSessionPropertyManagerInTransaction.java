@@ -14,7 +14,7 @@
 
 package io.trino.plugin.session;
 
-import io.trino.plugin.hive.HiveQueryRunner;
+import io.trino.plugin.hive.MyHiveQueryRunner;
 import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.QueryRunner;
@@ -33,7 +33,7 @@ public class TestSessionPropertyManagerInTransaction
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        DistributedQueryRunner queryRunner = HiveQueryRunner.builder()
+        DistributedQueryRunner queryRunner = MyHiveQueryRunner.builder()
                 .build();
         queryRunner.installPlugin(new SessionPropertyConfigurationManagerPlugin());
         queryRunner.getSessionPropertyDefaults().loadConfigurationManager(CONFIG_FILE.getAbsoluteFile());

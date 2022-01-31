@@ -14,7 +14,7 @@
 package io.trino.plugin.hive.orc;
 
 import io.trino.Session;
-import io.trino.plugin.hive.HiveQueryRunner;
+import io.trino.plugin.hive.MyHiveQueryRunner;
 import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.QueryRunner;
 import org.intellij.lang.annotations.Language;
@@ -31,7 +31,7 @@ public class TestOrcWithBloomFilters
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
+        return MyHiveQueryRunner.builder()
                 .addHiveProperty("hive.orc.bloom-filters.enabled", "true")
                 .addHiveProperty("hive.orc.default-bloom-filter-fpp", "0.001")
                 .build();

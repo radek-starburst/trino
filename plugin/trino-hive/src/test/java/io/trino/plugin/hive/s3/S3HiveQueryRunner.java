@@ -20,7 +20,7 @@ import io.trino.plugin.hive.HdfsConfigurationInitializer;
 import io.trino.plugin.hive.HdfsEnvironment;
 import io.trino.plugin.hive.HiveConfig;
 import io.trino.plugin.hive.HiveHdfsConfiguration;
-import io.trino.plugin.hive.HiveQueryRunner;
+import io.trino.plugin.hive.MyHiveQueryRunner;
 import io.trino.plugin.hive.authentication.NoHdfsAuthentication;
 import io.trino.plugin.hive.containers.HiveMinioDataLake;
 import io.trino.plugin.hive.metastore.MetastoreConfig;
@@ -86,7 +86,7 @@ public final class S3HiveQueryRunner
     }
 
     public static class Builder
-            extends HiveQueryRunner.Builder<Builder>
+            extends MyHiveQueryRunner.Builder<Builder>
     {
         private HostAndPort hiveMetastoreEndpoint;
         private String s3Endpoint;

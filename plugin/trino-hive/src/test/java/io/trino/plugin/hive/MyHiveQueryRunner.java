@@ -62,11 +62,11 @@ import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.testng.Assert.assertEquals;
 
-public final class HiveQueryRunner
+public final class MyHiveQueryRunner
 {
-    private static final Logger log = Logger.get(HiveQueryRunner.class);
+    private static final Logger log = Logger.get(MyHiveQueryRunner.class);
 
-    private HiveQueryRunner() {}
+    private MyHiveQueryRunner() {}
 
     public static final String HIVE_CATALOG = "hive";
     private static final String HIVE_BUCKETED_CATALOG = "hive_bucketed";
@@ -325,7 +325,7 @@ public final class HiveQueryRunner
             baseDataDir = Optional.of(path);
         }
 
-        DistributedQueryRunner queryRunner = HiveQueryRunner.builder()
+        DistributedQueryRunner queryRunner = MyHiveQueryRunner.builder()
                 .setExtraProperties(ImmutableMap.of("http-server.http.port", "8080"))
                 .setSkipTimezoneSetup(true)
                 .setHiveProperties(ImmutableMap.of())
