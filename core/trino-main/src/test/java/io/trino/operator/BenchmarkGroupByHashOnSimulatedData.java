@@ -46,7 +46,6 @@ import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -55,12 +54,12 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.jmh.Benchmarks.benchmark;
+import static io.trino.operator.BenchmarkGroupByHashOnSimulatedData.WorkType.GET_GROUPS;
 import static io.trino.operator.UpdateMemory.NOOP;
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toUnmodifiableList;
 
 /**
  * This class attempts to emulate aggregations done while running real-life queries.
@@ -70,29 +69,33 @@ import static java.util.stream.Collectors.toUnmodifiableList;
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @Fork(3)
-@Warmup(iterations = 5, time = 500, timeUnit = TimeUnit.MILLISECONDS)
+@Warmup(iterations = 10, time = 500, timeUnit = TimeUnit.MILLISECONDS)
 @Measurement(iterations = 10, time = 500, timeUnit = TimeUnit.MILLISECONDS)
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkGroupByHashOnSimulatedData
 {
     private static final int DEFAULT_POSITIONS = 10_000_000;
-    private static final int EXPECTED_SIZE = 10_000;
+    private static final int EXPECTED_GROUP_COUNT = 10_000;
     private static final int DEFAULT_PAGE_SIZE = 8192;
     private static final TypeOperators TYPE_OPERATORS = new TypeOperators();
     private static final BlockTypeOperators TYPE_OPERATOR_FACTORY = new BlockTypeOperators(TYPE_OPERATORS);
-
-    @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
-    private final List<GroupByIdBlock> results = new ArrayList<>();
 
     private final JoinCompiler joinCompiler = new JoinCompiler(TYPE_OPERATORS);
 
     @Benchmark
     @OperationsPerInvocation(DEFAULT_POSITIONS)
-    public Object groupBy(BenchmarkTpch data)
+    public Object groupBy(BenchmarkContext data)
     {
-        GroupByHash groupByHash =
-                GroupByHash.createGroupByHash(data.getTypes(), data.getChannels(), Optional.empty(), EXPECTED_SIZE, false, joinCompiler, TYPE_OPERATOR_FACTORY, NOOP);
-        addInputPages(groupByHash, data.getPages());
+        GroupByHash groupByHash = GroupByHash.createGroupByHash(
+                data.getTypes(),
+                data.getChannels(),
+                Optional.empty(),
+                EXPECTED_GROUP_COUNT,
+                false,
+                joinCompiler,
+                TYPE_OPERATOR_FACTORY,
+                NOOP);
+        List<GroupByIdBlock> results = addInputPages(groupByHash, data.getPages(), data.getWorkType());
 
         ImmutableList.Builder<Page> pages = ImmutableList.builder();
         PageBuilder pageBuilder = new PageBuilder(groupByHash.getTypes());
@@ -105,32 +108,46 @@ public class BenchmarkGroupByHashOnSimulatedData
             }
         }
         pages.add(pageBuilder.build());
-        return pageBuilder.build();
+        return ImmutableList.of(pages, results); // all the things that might get erased by the compiler
     }
 
     @Test
-    public void runGroupByTpch()
+    public void testGroupBy()
     {
         BenchmarkGroupByHashOnSimulatedData benchmark = new BenchmarkGroupByHashOnSimulatedData();
-        for (AggregationDefinition query : AggregationDefinition.values()) {
-            BenchmarkTpch data = new BenchmarkTpch(query, 10_000);
-            data.setup();
-            benchmark.groupBy(data);
+        for (double nullChance : new double[] {0, .1, .5, .9}) {
+            for (AggregationDefinition query : AggregationDefinition.values()) {
+                BenchmarkContext data = new BenchmarkContext(GET_GROUPS, query, nullChance, 10_000);
+                data.setup();
+                benchmark.groupBy(data);
+            }
         }
     }
 
-    private void addInputPages(GroupByHash groupByHash, List<Page> pages)
+    private List<GroupByIdBlock> addInputPages(GroupByHash groupByHash, List<Page> pages, WorkType workType)
     {
-        results.clear();
+        List<GroupByIdBlock> results = new ArrayList<>();
         for (Page page : pages) {
-            Work<GroupByIdBlock> work = groupByHash.getGroupIds(page);
-            boolean finished;
-            do {
-                finished = work.process();
-                results.add(work.getResult()); // Pretend the results are used
+            if (workType == GET_GROUPS) {
+                Work<GroupByIdBlock> work = groupByHash.getGroupIds(page);
+                boolean finished;
+                do {
+                    finished = work.process();
+                    results.add(work.getResult());
+                }
+                while (!finished);
             }
-            while (!finished);
+            else {
+                Work<?> work = groupByHash.addPage(page);
+                boolean finished;
+                do {
+                    finished = work.process();
+                }
+                while (!finished);
+            }
         }
+
+        return results;
     }
 
     public interface BlockWriter
@@ -196,54 +213,76 @@ public class BenchmarkGroupByHashOnSimulatedData
             this.type = requireNonNull(type, "type is null");
             this.blockWriter = requireNonNull(blockWriter, "blockWriter is null");
         }
+
+        public Type getType()
+        {
+            return type;
+        }
+
+        public BlockWriter getBlockWriter()
+        {
+            return blockWriter;
+        }
     }
 
     @State(Scope.Thread)
-    public static class BenchmarkTpch
+    public static class BenchmarkContext
     {
         @Param
+        private WorkType workType;
+
+        @Param
         private AggregationDefinition query;
+
+        @Param({"0", ".1", ".5", ".9"})
+        private double nullChance;
 
         private final int positions;
         private List<Page> pages;
         private List<Type> types;
         private int[] channels;
 
-        public BenchmarkTpch()
+        public BenchmarkContext()
         {
             this.positions = DEFAULT_POSITIONS;
         }
 
-        public BenchmarkTpch(AggregationDefinition query, int positions)
+        public BenchmarkContext(WorkType workType, AggregationDefinition query, double nullChance, int positions)
         {
+            this.workType = requireNonNull(workType, "workType is null");
             this.query = requireNonNull(query, "query is null");
             this.positions = positions;
+            this.nullChance = nullChance;
         }
 
         @Setup
         public void setup()
         {
-            types = query.channels.stream().map(channel -> channel.columnType.type).collect(toUnmodifiableList());
-            channels = IntStream.range(0, query.channels.size()).toArray();
+            types = query.getChannels().stream()
+                    .map(channel -> channel.columnType.type)
+                    .collect(toImmutableList());
+            channels = IntStream.range(0, query.getChannels().size()).toArray();
             pages = createPages(query);
         }
 
         private List<Page> createPages(AggregationDefinition definition)
         {
             List<Page> result = new ArrayList<>();
-            int channelCount = definition.channels.size();
+            int channelCount = definition.getChannels().size();
             int pageSize = definition.pageSize;
             int pageCount = positions / pageSize;
 
             Block[][] blocks = new Block[channelCount][];
-            for (int i = 0; i < definition.channels.size(); i++) {
-                ChannelDefinition channel = definition.channels.get(i);
-                blocks[i] = channel.createBlocks(pageCount, pageSize, i);
+            for (int i = 0; i < definition.getChannels().size(); i++) {
+                ChannelDefinition channel = definition.getChannels().get(i);
+                blocks[i] = channel.createBlocks(pageCount, pageSize, i, nullChance);
             }
 
             for (int i = 0; i < pageCount; i++) {
-                int finalI = i;
-                Block[] pageBlocks = IntStream.range(0, channelCount).mapToObj(channel -> blocks[channel][finalI]).toArray(Block[]::new);
+                int pageIndex = i;
+                Block[] pageBlocks = IntStream.range(0, channelCount)
+                        .mapToObj(channel -> blocks[channel][pageIndex])
+                        .toArray(Block[]::new);
                 result.add(new Page(pageBlocks));
             }
 
@@ -264,6 +303,17 @@ public class BenchmarkGroupByHashOnSimulatedData
         {
             return channels;
         }
+
+        public WorkType getWorkType()
+        {
+            return workType;
+        }
+    }
+
+    public enum WorkType
+    {
+        ADD,
+        GET_GROUPS,
     }
 
     public enum AggregationDefinition
@@ -275,12 +325,12 @@ public class BenchmarkGroupByHashOnSimulatedData
         BIGINT_100K_GROUPS(new ChannelDefinition(ColumnType.BIGINT, 100_000)),
         BIGINT_1M_GROUPS(new ChannelDefinition(ColumnType.BIGINT, 1_000_000)),
         BIGINT_10M_GROUPS(new ChannelDefinition(ColumnType.BIGINT, 10_000_000)),
-        BIGINT_2_GROUPS_1_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 50, 1)),
-        BIGINT_2_GROUPS_1_BIG_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 10000, 1)),
-        BIGINT_2_GROUPS_MULTIPLE_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 50, 10)),
-        BIGINT_2_GROUPS_MULTIPLE_BIG_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 10000, 10)),
-        BIGINT_10K_GROUPS_1_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 10000, 20000, 1)),
-        BIGINT_10K_GROUPS_MULTIPLE_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 10000, 20000, 20)),
+        BIGINT_2_GROUPS_1_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 1, 50)),
+        BIGINT_2_GROUPS_1_BIG_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 1, 10000)),
+        BIGINT_2_GROUPS_MULTIPLE_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 10, 50)),
+        BIGINT_2_GROUPS_MULTIPLE_BIG_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 2, 10, 10000)),
+        BIGINT_10K_GROUPS_1_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 10000, 1, 20000)),
+        BIGINT_10K_GROUPS_MULTIPLE_DICTIONARY(new ChannelDefinition(ColumnType.BIGINT, 10000, 20, 20000)),
         DOUBLE_10_GROUPS(new ChannelDefinition(ColumnType.DOUBLE, 10)),
         TWO_TINY_VARCHAR_DICTIONARIES(
                 new ChannelDefinition(ColumnType.CHAR_1, 2, 10),
@@ -294,7 +344,7 @@ public class BenchmarkGroupByHashOnSimulatedData
         TWO_SMALL_VARCHAR_DICTIONARIES(
                 new ChannelDefinition(ColumnType.CHAR_1, 30, 10),
                 new ChannelDefinition(ColumnType.CHAR_1, 30, 10)),
-        TWO_SMALL_VARCHAR_DICTIONARIES_WITH_SMALL_PAGE_SIZE( // low cardinality optimisation will not kick in here
+        TWO_SMALL_VARCHAR_DICTIONARIES_WITH_SMALL_PAGE_SIZE(// low cardinality optimisation will not kick in here
                 1000,
                 new ChannelDefinition(ColumnType.CHAR_1, 30, 10),
                 new ChannelDefinition(ColumnType.CHAR_1, 30, 10)),
@@ -305,12 +355,12 @@ public class BenchmarkGroupByHashOnSimulatedData
         VARCHAR_100K_GROUPS(new ChannelDefinition(ColumnType.VARCHAR_25, 100_000)),
         VARCHAR_1M_GROUPS(new ChannelDefinition(ColumnType.VARCHAR_25, 1_000_000)),
         VARCHAR_10M_GROUPS(new ChannelDefinition(ColumnType.VARCHAR_25, 10_000_000)),
-        VARCHAR_2_GROUPS_1_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 50, 1)),
-        VARCHAR_2_GROUPS_1_BIG_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 10000, 1)),
-        VARCHAR_2_GROUPS_MULTIPLE_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 50, 10)),
-        VARCHAR_2_GROUPS_MULTIPLE_BIG_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 10000, 10)),
-        VARCHAR_10K_GROUPS_1_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 10000, 20000, 1)),
-        VARCHAR_10K_GROUPS_MULTIPLE_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 10000, 20000, 20)),
+        VARCHAR_2_GROUPS_1_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 1, 50)),
+        VARCHAR_2_GROUPS_1_BIG_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 1, 10000)),
+        VARCHAR_2_GROUPS_MULTIPLE_SMALL_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 10, 50)),
+        VARCHAR_2_GROUPS_MULTIPLE_BIG_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 2, 10, 10000)),
+        VARCHAR_10K_GROUPS_1_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 10000, 1, 20000)),
+        VARCHAR_10K_GROUPS_MULTIPLE_DICTIONARY(new ChannelDefinition(ColumnType.VARCHAR_25, 10000, 20, 20000)),
         TINY_CHAR_10_GROUPS(new ChannelDefinition(ColumnType.CHAR_1, 10)),
         BIG_VARCHAR_10_GROUPS(new ChannelDefinition(ColumnType.VARCHAR_117, 10)),
         BIG_VARCHAR_1M_GROUPS(new ChannelDefinition(ColumnType.VARCHAR_117, 1_000_000)),
@@ -404,90 +454,134 @@ public class BenchmarkGroupByHashOnSimulatedData
             this.pageSize = pageSize;
             this.channels = Arrays.stream(requireNonNull(channels, "channels is null")).collect(toImmutableList());
         }
+
+        public int getPageSize()
+        {
+            return pageSize;
+        }
+
+        public List<ChannelDefinition> getChannels()
+        {
+            return channels;
+        }
     }
 
     public static class ChannelDefinition
     {
         private final ColumnType columnType;
-        private final int distinctValuesCount;
-        private final int dictionaryPositions;
-        private final int distinctDictionaries;
+        private final int distinctValuesCountInColumn;
+        private final int dictionaryPositionsCount;
+        private final int numberOfDistinctDictionaries;
 
-        public ChannelDefinition(ColumnType columnType, int distinctValuesCount)
+        public ChannelDefinition(ColumnType columnType, int distinctValuesCountInColumn)
         {
-            this(columnType, distinctValuesCount, -1, -1);
+            this(columnType, distinctValuesCountInColumn, -1, -1);
         }
 
-        public ChannelDefinition(ColumnType columnType, int distinctValuesCount, int distinctDictionaries)
+        public ChannelDefinition(ColumnType columnType, int distinctValuesCountInColumn, int numberOfDistinctDictionaries)
         {
-            this(columnType, distinctValuesCount, distinctValuesCount, distinctDictionaries);
+            this(columnType, distinctValuesCountInColumn, numberOfDistinctDictionaries, distinctValuesCountInColumn);
         }
 
-        public ChannelDefinition(ColumnType columnType, int distinctValuesCount, int dictionaryPositions, int distinctDictionaries)
+        public ChannelDefinition(ColumnType columnType, int distinctValuesCountInColumn, int numberOfDistinctDictionaries, int dictionaryPositionsCount)
         {
             this.columnType = requireNonNull(columnType, "columnType is null");
-            this.distinctValuesCount = distinctValuesCount;
-            this.dictionaryPositions = dictionaryPositions;
-            this.distinctDictionaries = distinctDictionaries;
+            this.distinctValuesCountInColumn = distinctValuesCountInColumn;
+            this.dictionaryPositionsCount = dictionaryPositionsCount;
+            this.numberOfDistinctDictionaries = numberOfDistinctDictionaries;
+            checkArgument(dictionaryPositionsCount == -1 || dictionaryPositionsCount >= distinctValuesCountInColumn);
         }
 
-        public Block[] createBlocks(int blockCount, int positionsPerBlock, int channel)
+        public ColumnType getColumnType()
+        {
+            return columnType;
+        }
+
+        public Block[] createBlocks(int blockCount, int positionsPerBlock, int channel, double nullChance)
         {
             Block[] blocks = new Block[blockCount];
-            if (dictionaryPositions == -1) { // No dictionaries
-                BlockBuilder allValues = columnType.type.createBlockBuilder(null, distinctValuesCount);
-                columnType.blockWriter.write(allValues, distinctValuesCount, channel);
-                Random r = new Random(channel);
-                for (int i = 0; i < blockCount; i++) {
-                    BlockBuilder block = columnType.type.createBlockBuilder(null, positionsPerBlock);
-                    for (int j = 0; j < positionsPerBlock; j++) {
-                        int position = r.nextInt(distinctValuesCount);
-                        columnType.type.appendTo(allValues, position, block);
-                    }
-                    blocks[i] = block.build();
-                }
+            if (dictionaryPositionsCount == -1) { // No dictionaries
+                createNonDictionaryBlock(blockCount, positionsPerBlock, channel, nullChance, blocks);
             }
             else {
-                Random r = new Random(1);
-
-                int totalValueCount = Math.max(distinctValuesCount, dictionaryPositions);
-                BlockBuilder allValues = columnType.type.createBlockBuilder(null, totalValueCount);
-                columnType.blockWriter.write(allValues, totalValueCount, channel);
-                Set<Integer> usedValues = nOutOfM(r, distinctValuesCount, totalValueCount);
-
-                Block[] dictionaries = new Block[distinctDictionaries];
-                Set<Integer>[] possibleIndexesSet = new Set[distinctDictionaries];
-                for (int i = 0; i < distinctDictionaries; i++) {
-                    BlockBuilder dictionaryBuilder = columnType.type.createBlockBuilder(null, dictionaryPositions);
-                    possibleIndexesSet[i] = new HashSet<>();
-                    Set<Integer> distinctValues = nOutOfM(r, dictionaryPositions, totalValueCount);
-                    List<Integer> positions = new ArrayList<>(distinctValues);
-                    Collections.shuffle(positions);
-
-                    for (int j = 0; j < dictionaryPositions; j++) {
-                        int position = positions.get(j);
-                        if (usedValues.contains(position)) {
-                            possibleIndexesSet[i].add(j);
-                        }
-                        columnType.type.appendTo(allValues, position, dictionaryBuilder);
-                    }
-                    dictionaries[i] = dictionaryBuilder.build();
-                }
-                List<Integer>[] possibleIndexes = Arrays.stream(possibleIndexesSet).map(x -> x.stream().collect(toList())).toArray(List[]::new);
-
-                for (int i = 0; i < blockCount; i++) {
-                    int[] indexes = new int[positionsPerBlock];
-                    int dictionaryId = r.nextInt(distinctDictionaries);
-                    Block dictionary = dictionaries[dictionaryId];
-                    int possibleValuesCount = possibleIndexes[dictionaryId].size();
-                    for (int j = 0; j < positionsPerBlock; j++) {
-                        indexes[j] = possibleIndexes[dictionaryId].get(r.nextInt(possibleValuesCount));
-                    }
-
-                    blocks[i] = new DictionaryBlock(dictionary, indexes);
-                }
+                createDictionaryBlock(blockCount, positionsPerBlock, channel, nullChance, blocks);
             }
             return blocks;
+        }
+
+        private void createDictionaryBlock(int blockCount, int positionsPerBlock, int channel, double nullChance, Block[] blocks)
+        {
+            Random r = new Random(channel);
+
+            // All values that will be stored in dictionaries. Not all of them need to be used in blocks
+            BlockBuilder allValues = generateValues(channel, dictionaryPositionsCount);
+            if (nullChance > 0) {
+                allValues.appendNull();
+            }
+
+            Block[] dictionaries = new Block[numberOfDistinctDictionaries];
+            // Generate 'numberOfDistinctDictionaries' dictionaries that are equal, but are not the same object.
+            // This way the optimization that caches dictionary results will not work
+            for (int i = 0; i < numberOfDistinctDictionaries; i++) {
+                dictionaries[i] = allValues.build();
+            }
+
+            int[] usedValues = nOutOfM(r, distinctValuesCountInColumn, dictionaryPositionsCount).stream()
+                    .mapToInt(x -> x)
+                    .toArray();
+
+            // Generate output blocks
+            for (int i = 0; i < blockCount; i++) {
+                int[] indexes = new int[positionsPerBlock];
+                int dictionaryId = r.nextInt(numberOfDistinctDictionaries);
+                Block dictionary = dictionaries[dictionaryId];
+                for (int j = 0; j < positionsPerBlock; j++) {
+                    if (isNull(r, nullChance)) {
+                        indexes[j] = dictionaryPositionsCount; // Last value in dictionary is null
+                    }
+                    else {
+                        indexes[j] = usedValues[r.nextInt(usedValues.length)];
+                    }
+                }
+
+                blocks[i] = new DictionaryBlock(dictionary, indexes);
+            }
+        }
+
+        private BlockBuilder generateValues(int channel, int dictionaryPositions)
+        {
+            BlockBuilder allValues = columnType.getType().createBlockBuilder(null, dictionaryPositions);
+            columnType.getBlockWriter().write(allValues, dictionaryPositions, channel);
+            return allValues;
+        }
+
+        private void createNonDictionaryBlock(int blockCount, int positionsPerBlock, int channel, double nullChance, Block[] blocks)
+        {
+            BlockBuilder allValues = generateValues(channel, distinctValuesCountInColumn);
+            Random r = new Random(channel);
+            for (int i = 0; i < blockCount; i++) {
+                BlockBuilder block = columnType.getType().createBlockBuilder(null, positionsPerBlock);
+                for (int j = 0; j < positionsPerBlock; j++) {
+                    if (isNull(r, nullChance)) {
+                        block.appendNull();
+                    }
+                    else {
+                        int position = r.nextInt(distinctValuesCountInColumn);
+                        columnType.getType().appendTo(allValues, position, block);
+                    }
+                }
+                blocks[i] = block.build();
+            }
+        }
+
+        private static boolean isNull(Random random, double nullChance)
+        {
+            double value = 0;
+            // null chance has to be 0 to 1 exclusive.
+            while (value == 0) {
+                value = random.nextDouble();
+            }
+            return value < nullChance;
         }
 
         private Set<Integer> nOutOfM(Random r, int n, int m)
@@ -508,7 +602,7 @@ public class BenchmarkGroupByHashOnSimulatedData
     {
         benchmark(BenchmarkGroupByHashOnSimulatedData.class)
                 .withOptions(optionsBuilder -> optionsBuilder
-                        .jvmArgs("-Xmx4g"))
+                        .jvmArgs("-Xmx8g"))
                 .run();
     }
 }
