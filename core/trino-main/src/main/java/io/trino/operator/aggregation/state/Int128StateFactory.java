@@ -19,47 +19,40 @@ import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateFactory;
 import org.openjdk.jol.info.ClassLayout;
 
-import javax.annotation.Nullable;
-
 import static io.airlift.slice.SizeOf.sizeOf;
 import static java.lang.System.arraycopy;
 
-public class LongDecimalWithOverflowStateFactory
-        implements AccumulatorStateFactory<LongDecimalWithOverflowState>
+public class Int128StateFactory
+        implements AccumulatorStateFactory<Int128State>
 {
     @Override
-    public LongDecimalWithOverflowState createSingleState()
+    public Int128State createSingleState()
     {
-        return new SingleLongDecimalWithOverflowState();
+        return new SingleInt128State();
     }
 
     @Override
-    public LongDecimalWithOverflowState createGroupedState()
+    public Int128State createGroupedState()
     {
-        return new GroupedLongDecimalWithOverflowState();
+        return new GroupedInt128State();
     }
 
-    public static class GroupedLongDecimalWithOverflowState
+    public static class GroupedInt128State
             extends AbstractGroupedAccumulatorState
-            implements LongDecimalWithOverflowState
+            implements Int128State
     {
-        private static final int INSTANCE_SIZE = ClassLayout.parseClass(GroupedLongDecimalWithOverflowState.class).instanceSize();
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(GroupedInt128State.class).instanceSize();
         protected final BooleanBigArray isNotNull = new BooleanBigArray();
         /**
          * Stores 128-bit decimals as pairs of longs
          */
         protected final LongBigArray unscaledDecimals = new LongBigArray();
-        @Nullable
-        protected LongBigArray overflows; // lazily initialized on the first overflow
 
         @Override
         public void ensureCapacity(long size)
         {
             isNotNull.ensureCapacity(size);
             unscaledDecimals.ensureCapacity(size * 2);
-            if (overflows != null) {
-                overflows.ensureCapacity(size);
-            }
         }
 
         @Override
@@ -87,63 +80,26 @@ public class LongDecimalWithOverflowStateFactory
         }
 
         @Override
-        public long getOverflow()
-        {
-            if (overflows == null) {
-                return 0;
-            }
-            return overflows.get(getGroupId());
-        }
-
-        @Override
-        public void setOverflow(long overflow)
-        {
-            // setOverflow(0) must overwrite any existing overflow value
-            if (overflow == 0 && overflows == null) {
-                return;
-            }
-            long groupId = getGroupId();
-            if (overflows == null) {
-                overflows = new LongBigArray();
-                overflows.ensureCapacity(isNotNull.getCapacity());
-            }
-            overflows.set(groupId, overflow);
-        }
-
-        @Override
-        public void addOverflow(long overflow)
-        {
-            if (overflow != 0) {
-                long groupId = getGroupId();
-                if (overflows == null) {
-                    overflows = new LongBigArray();
-                    overflows.ensureCapacity(isNotNull.getCapacity());
-                }
-                overflows.add(groupId, overflow);
-            }
-        }
-
-        @Override
         public long getEstimatedSize()
         {
-            return INSTANCE_SIZE + isNotNull.sizeOf() + unscaledDecimals.sizeOf() + (overflows == null ? 0 : overflows.sizeOf());
+            return INSTANCE_SIZE + isNotNull.sizeOf() + unscaledDecimals.sizeOf();
         }
     }
 
-    public static class SingleLongDecimalWithOverflowState
-            implements LongDecimalWithOverflowState
+    public static class SingleInt128State
+            implements Int128State
     {
-        private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleLongDecimalWithOverflowState.class).instanceSize();
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleInt128State.class).instanceSize();
         protected static final int SIZE = (int) sizeOf(new long[2]);
 
         protected final long[] unscaledDecimal = new long[2];
         protected boolean isNotNull;
         protected long overflow;
 
-        public SingleLongDecimalWithOverflowState() {}
+        public SingleInt128State() {}
 
         // for copying
-        private SingleLongDecimalWithOverflowState(long[] unscaledDecimal, boolean isNotNull, long overflow)
+        private SingleInt128State(long[] unscaledDecimal, boolean isNotNull, long overflow)
         {
             arraycopy(unscaledDecimal, 0, this.unscaledDecimal, 0, 2);
             this.isNotNull = isNotNull;
@@ -175,24 +131,6 @@ public class LongDecimalWithOverflowStateFactory
         }
 
         @Override
-        public long getOverflow()
-        {
-            return overflow;
-        }
-
-        @Override
-        public void setOverflow(long overflow)
-        {
-            this.overflow = overflow;
-        }
-
-        @Override
-        public void addOverflow(long overflow)
-        {
-            this.overflow += overflow;
-        }
-
-        @Override
         public long getEstimatedSize()
         {
             return INSTANCE_SIZE + SIZE;
@@ -201,7 +139,7 @@ public class LongDecimalWithOverflowStateFactory
         @Override
         public AccumulatorState copy()
         {
-            return new SingleLongDecimalWithOverflowState(unscaledDecimal, isNotNull, overflow);
+            return new SingleInt128State(unscaledDecimal, isNotNull, overflow);
         }
     }
 }
