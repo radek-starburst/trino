@@ -14,7 +14,8 @@
 package io.trino.operator.aggregation;
 
 import com.google.common.collect.ImmutableList;
-import io.trino.operator.aggregation.state.StateCompiler;
+import io.trino.operator.aggregation.state.Int128State;
+import io.trino.operator.aggregation.state.Int128StateFactory;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateFactory;
 import io.trino.spi.type.DecimalType;
@@ -45,16 +46,16 @@ public class TestDecimalAverageAggregation
     private static final BigInteger TWO_HUNDRED = new BigInteger("200");
     private static final DecimalType TYPE = createDecimalType(38, 0);
 
-    private LongLongState decimalState;
-    private LongLongState counterOverflowState;
-    private AccumulatorStateFactory<LongLongState> longLongStateFactory;
+    private Int128State decimalState;
+    private Int128State counterOverflowState;
+    private AccumulatorStateFactory<Int128State> int128StateFactory;
 
     @BeforeMethod
     public void setUp()
     {
-        longLongStateFactory = StateCompiler.generateStateFactory(LongLongState.class);
-        decimalState = longLongStateFactory.createSingleState();
-        counterOverflowState = longLongStateFactory.createSingleState();
+        int128StateFactory = new Int128StateFactory();
+        decimalState = int128StateFactory.createSingleState();
+        counterOverflowState = int128StateFactory.createSingleState();
     }
 
     @Test
@@ -62,15 +63,15 @@ public class TestDecimalAverageAggregation
     {
         addToState(decimalState, counterOverflowState, TWO.pow(126));
 
-        assertEquals(counterOverflowState.getFirst(), 1);
-        assertEquals(counterOverflowState.getSecond(), 0);
-//        assertEquals(getDecimal(decimalState), Int128.valueOf(TWO.pow(126)));
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset()], 1);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], 0);
+        assertEquals(getDecimal(decimalState), Int128.valueOf(TWO.pow(126)));
 
         addToState(decimalState, counterOverflowState, TWO.pow(126));
 
-        assertEquals(counterOverflowState.getFirst(), 2);
-        assertEquals(counterOverflowState.getSecond(), 1);
-//        assertEquals(getDecimal(decimalState), Int128.valueOf(1L << 63, 0));
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset()], 2);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], 1);
+        assertEquals(getDecimal(decimalState), Int128.valueOf(1L << 63, 0));
         assertAverageEquals(TWO.pow(126));
     }
 
@@ -79,15 +80,15 @@ public class TestDecimalAverageAggregation
     {
         addToState(decimalState, counterOverflowState, Decimals.MIN_UNSCALED_DECIMAL.toBigInteger());
 
-        assertEquals(counterOverflowState.getFirst(), 1);
-        assertEquals(counterOverflowState.getSecond(), 0);
-//        assertEquals(getDecimal(decimalState), Decimals.MIN_UNSCALED_DECIMAL);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset()], 1);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], 0);
+        assertEquals(getDecimal(decimalState), Decimals.MIN_UNSCALED_DECIMAL);
 
         addToState(decimalState, counterOverflowState, Decimals.MIN_UNSCALED_DECIMAL.toBigInteger());
 
-        assertEquals(counterOverflowState.getFirst(), 2);
-        assertEquals(counterOverflowState.getSecond(), -1);
-//        assertEquals(getDecimal(decimalState), Int128.valueOf(0x698966AF4AF2770BL, 0xECEBBB8000000002L));
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset()], 2);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], -1);
+        assertEquals(getDecimal(decimalState), Int128.valueOf(0x698966AF4AF2770BL, 0xECEBBB8000000002L));
 
         assertAverageEquals(Decimals.MIN_UNSCALED_DECIMAL.toBigInteger());
     }
@@ -99,14 +100,14 @@ public class TestDecimalAverageAggregation
         addToState(decimalState, counterOverflowState, TWO.pow(126));
         addToState(decimalState, counterOverflowState, TWO.pow(125));
 
-        assertEquals(counterOverflowState.getSecond(), 1);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], 1);
 //        assertEquals(getDecimal(decimalState), Int128.valueOf((1L << 63) | (1L << 61), 0));
 
         addToState(decimalState, counterOverflowState, TWO.pow(126).negate());
         addToState(decimalState, counterOverflowState, TWO.pow(126).negate());
         addToState(decimalState, counterOverflowState, TWO.pow(126).negate());
 
-        assertEquals(counterOverflowState.getSecond(), 0);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], 0);
 //        assertEquals(getDecimal(decimalState), Int128.valueOf(TWO.pow(125).negate()));
 
         assertAverageEquals(TWO.pow(125).negate().divide(BigInteger.valueOf(6)));
@@ -118,16 +119,16 @@ public class TestDecimalAverageAggregation
         addToState(decimalState, counterOverflowState, TWO.pow(126));
         addToState(decimalState, counterOverflowState, TWO.pow(126));
 
-        LongLongState otherDecimalState = longLongStateFactory.createSingleState();
-        LongLongState otherCounterOverflowState = longLongStateFactory.createSingleState();
+        Int128State otherDecimalState = int128StateFactory.createSingleState();
+        Int128State otherCounterOverflowState = int128StateFactory.createSingleState();
 
         addToState(otherDecimalState, otherCounterOverflowState, TWO.pow(126));
         addToState(otherDecimalState, otherCounterOverflowState, TWO.pow(126));
 
-//        DecimalAverageAggregation.combine(counterOverflowState, decimalState, otherCounterOverflowState, otherDecimalState);
-        assertEquals(counterOverflowState.getFirst(), 4);
-        assertEquals(counterOverflowState.getSecond(), 1);
-//        assertEquals(getDecimal(decimalState), Int128.ZERO);
+        DecimalAverageAggregation.combine(counterOverflowState, decimalState, otherCounterOverflowState, otherDecimalState);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset()], 4);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], 1);
+        assertEquals(getDecimal(decimalState), Int128.ZERO);
 
         BigInteger expectedAverage = BigInteger.ZERO
                 .add(TWO.pow(126))
@@ -145,16 +146,16 @@ public class TestDecimalAverageAggregation
         addToState(decimalState, counterOverflowState, TWO.pow(125).negate());
         addToState(decimalState, counterOverflowState, TWO.pow(126).negate());
 
-        LongLongState otherDecimalState = longLongStateFactory.createSingleState();
-        LongLongState otherCounterOverflowState = longLongStateFactory.createSingleState();
+        Int128State otherDecimalState = int128StateFactory.createSingleState();
+        Int128State otherCounterOverflowState = int128StateFactory.createSingleState();
 
         addToState(otherDecimalState, otherCounterOverflowState, TWO.pow(125).negate());
         addToState(otherDecimalState, otherCounterOverflowState, TWO.pow(126).negate());
 
-//        DecimalAverageAggregation.combine(counterOverflowState, decimalState, otherCounterOverflowState, otherDecimalState);
-        assertEquals(counterOverflowState.getFirst(), 4);
-        assertEquals(counterOverflowState.getSecond(), -1);
-//        assertEquals(getDecimal(decimalState), Int128.valueOf(1L << 62, 0));
+        DecimalAverageAggregation.combine(counterOverflowState, decimalState, otherCounterOverflowState, otherDecimalState);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset()], 4);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], -1);
+        assertEquals(getDecimal(decimalState), Int128.valueOf(1L << 62, 0));
 
         BigInteger expectedAverage = BigInteger.ZERO
                 .add(TWO.pow(126))
@@ -176,19 +177,19 @@ public class TestDecimalAverageAggregation
 
     private void testNoOverflow(DecimalType type, List<BigInteger> numbers)
     {
-        LongLongState decimalState = longLongStateFactory.createSingleState();
-        LongLongState counterOverflowState = longLongStateFactory.createSingleState();
+        Int128State decimalState = int128StateFactory.createSingleState();
+        Int128State counterOverflowState = int128StateFactory.createSingleState();
 
         for (BigInteger number : numbers) {
             addToState(type, decimalState, counterOverflowState, number);
         }
 
-        assertEquals(counterOverflowState.getSecond(), 0);
+        assertEquals(counterOverflowState.getDecimalArray()[counterOverflowState.getDecimalArrayOffset() +1], 0);
         BigInteger sum = numbers.stream().reduce(BigInteger.ZERO, BigInteger::add);
-//        assertEquals(getDecimal(decimalState), Int128.valueOf(sum));
+        assertEquals(getDecimal(decimalState), Int128.valueOf(sum));
 
         BigDecimal expectedAverage = new BigDecimal(sum, type.getScale()).divide(BigDecimal.valueOf(numbers.size()), type.getScale(), HALF_UP);
-//        assertEquals(decodeBigDecimal(type, average(counterOverflowState, decimalState, type)), expectedAverage);
+        assertEquals(decodeBigDecimal(type, average(counterOverflowState, decimalState, type)), expectedAverage);
     }
 
     @DataProvider
@@ -224,29 +225,29 @@ public class TestDecimalAverageAggregation
 
     private void assertAverageEquals(BigInteger expectedAverage, DecimalType type)
     {
-//        assertEquals(average(null, null, null, null, type).toBigInteger(), expectedAverage);
+        assertEquals(average(decimalState, counterOverflowState, type).toBigInteger(), expectedAverage);
     }
 
-    private static void addToState(LongLongState decimalState, LongLongState counterOverflowState, BigInteger value)
+    private static void addToState(Int128State decimalState, Int128State counterOverflowState, BigInteger value)
     {
         addToState(TYPE, decimalState, counterOverflowState, value);
     }
 
-    // TODO: FIX IT
-    private static void addToState(DecimalType type, LongLongState decimalState, LongLongState counterOverflowState, BigInteger value)
+    private static void addToState(DecimalType type, Int128State decimalState, Int128State counterOverflowState, BigInteger value)
     {
         BlockBuilder blockBuilder = type.createFixedSizeBlockBuilder(1);
         type.writeObject(blockBuilder, Int128.valueOf(value));
         if (type.isShort()) {
-//            DecimalAverageAggregation.inputShortDecimal(null, null, null, null, 0);
+            DecimalAverageAggregation.inputShortDecimal(decimalState, counterOverflowState, blockBuilder.build(), 0);
         }
-//        else {
-//            DecimalAverageAggregation.inputLongDecimal(null, null, null, null, blockBuilder.build(), 0);
-//        }
+        else {
+            DecimalAverageAggregation.inputLongDecimal(decimalState, counterOverflowState, blockBuilder.build(), 0);
+        }
     }
 
-//    private Int128 getDecimal(LongLongState state)
-//    {
-//        return Int128.valueOf(state.getFirst(), state.getSecond());
-//    }
+    private Int128 getDecimal(Int128State state)
+    {
+        int offset = state.getDecimalArrayOffset();
+        return Int128.valueOf(state.getDecimalArray()[offset], state.getDecimalArray()[offset + 1]);
+    }
 }

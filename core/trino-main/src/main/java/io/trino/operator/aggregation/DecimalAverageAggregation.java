@@ -208,10 +208,6 @@ public class DecimalAverageAggregation
 
     public static void outputShortDecimal(DecimalType type, Int128State decimalState, Int128State counterOverflowState, BlockBuilder out)
     {
-        long[] counterOverflow = counterOverflowState.getDecimalArray();
-        int counterOverflowOffset = counterOverflowState.getDecimalArrayOffset();
-
-        // No ale jak. A co jezeli nie bylo wierszy, to nie moze byc null
         if (!counterOverflowState.isNotNull()) {
             out.appendNull();
         }
@@ -222,10 +218,7 @@ public class DecimalAverageAggregation
 
     public static void outputLongDecimal(DecimalType type, Int128State decimalState, Int128State counterOverflowState, BlockBuilder out)
     {
-        long[] counterOverflow = counterOverflowState.getDecimalArray();
-        int counterOverflowOffset = counterOverflowState.getDecimalArrayOffset();
-
-        if (counterOverflow[counterOverflowOffset] == 0) {
+        if (!counterOverflowState.isNotNull()) {
             out.appendNull();
         }
         else {

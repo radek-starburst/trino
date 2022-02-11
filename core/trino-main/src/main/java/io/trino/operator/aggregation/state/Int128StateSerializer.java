@@ -21,7 +21,6 @@ import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Int128;
 import io.trino.spi.type.Type;
 
-
 public class Int128StateSerializer
         implements AccumulatorStateSerializer<Int128State>
 {
