@@ -68,13 +68,13 @@ public class Int128StateFactory
         }
 
         @Override
-        public long[] getDecimalArray()
+        public long[] getArray()
         {
             return unscaledDecimals.getSegment(getGroupId() * 2);
         }
 
         @Override
-        public int getDecimalArrayOffset()
+        public int getArrayOffset()
         {
             return unscaledDecimals.getOffset(getGroupId() * 2);
         }
@@ -119,13 +119,13 @@ public class Int128StateFactory
         }
 
         @Override
-        public long[] getDecimalArray()
+        public long[] getArray()
         {
             return unscaledDecimal;
         }
 
         @Override
-        public int getDecimalArrayOffset()
+        public int getArrayOffset()
         {
             return 0;
         }

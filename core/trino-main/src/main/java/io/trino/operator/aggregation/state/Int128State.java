@@ -24,7 +24,7 @@ public interface Int128State
 
     void setNotNull();
 
-    long[] getDecimalArray();
+    long[] getArray();
 
-    int getDecimalArrayOffset();
+    int getArrayOffset();
 }

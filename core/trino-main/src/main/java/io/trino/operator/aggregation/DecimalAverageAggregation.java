@@ -123,11 +123,11 @@ public class DecimalAverageAggregation
 
     public static void inputShortDecimal(Int128State decimalState, Int128State counterOverflowState, Block block, int position)
     {
-        long[] counterOverflow = counterOverflowState.getDecimalArray();
-        int counterOverflowOffset = counterOverflowState.getDecimalArrayOffset();
+        long[] counterOverflow = counterOverflowState.getArray();
+        int counterOverflowOffset = counterOverflowState.getArrayOffset();
 
-        long[] decimal = decimalState.getDecimalArray();
-        int decimalOffset = decimalState.getDecimalArrayOffset();
+        long[] decimal = decimalState.getArray();
+        int decimalOffset = decimalState.getArrayOffset();
 
         counterOverflowState.setNotNull();
         decimalState.setNotNull();
@@ -149,11 +149,11 @@ public class DecimalAverageAggregation
 
     public static void inputLongDecimal(Int128State decimalState, Int128State counterOverflowState, Block block, int position)
     {
-        long[] counterOverflow = counterOverflowState.getDecimalArray();
-        int counterOverflowOffset = counterOverflowState.getDecimalArrayOffset();
+        long[] counterOverflow = counterOverflowState.getArray();
+        int counterOverflowOffset = counterOverflowState.getArrayOffset();
 
-        long[] decimal = decimalState.getDecimalArray();
-        int decimalOffset = decimalState.getDecimalArrayOffset();
+        long[] decimal = decimalState.getArray();
+        int decimalOffset = decimalState.getArrayOffset();
 
         counterOverflow[counterOverflowOffset] += 1;
         counterOverflowState.setNotNull();
@@ -175,15 +175,15 @@ public class DecimalAverageAggregation
 
     public static void combine(Int128State decimalState, Int128State counterOverflowState, Int128State otherDecimalState, Int128State otherCounterOverflowState)
     {
-        long[] counterOverflow = counterOverflowState.getDecimalArray();
-        int counterOverflowOffset = counterOverflowState.getDecimalArrayOffset();
-        long[] decimal = decimalState.getDecimalArray();
-        int decimalOffset = decimalState.getDecimalArrayOffset();
+        long[] counterOverflow = counterOverflowState.getArray();
+        int counterOverflowOffset = counterOverflowState.getArrayOffset();
+        long[] decimal = decimalState.getArray();
+        int decimalOffset = decimalState.getArrayOffset();
 
-        long[] otherCounterOverflow = otherCounterOverflowState.getDecimalArray();
-        int otherCounterOverflowOffset = otherCounterOverflowState.getDecimalArrayOffset();
-        long[] otherDecimal = otherDecimalState.getDecimalArray();
-        int otherDecimalOffset = otherDecimalState.getDecimalArrayOffset();
+        long[] otherCounterOverflow = otherCounterOverflowState.getArray();
+        int otherCounterOverflowOffset = otherCounterOverflowState.getArrayOffset();
+        long[] otherDecimal = otherDecimalState.getArray();
+        int otherDecimalOffset = otherDecimalState.getArrayOffset();
 
         counterOverflow[counterOverflowOffset] += otherCounterOverflow[otherCounterOverflowOffset];
 
@@ -229,10 +229,10 @@ public class DecimalAverageAggregation
     @VisibleForTesting
     public static Int128 average(Int128State decimalState, Int128State counterOverflowState, DecimalType type)
     {
-        long[] counterOverflow = counterOverflowState.getDecimalArray();
-        int counterOverflowOffset = counterOverflowState.getDecimalArrayOffset();
-        long[] decimal = decimalState.getDecimalArray();
-        int decimalOffset = decimalState.getDecimalArrayOffset();
+        long[] counterOverflow = counterOverflowState.getArray();
+        int counterOverflowOffset = counterOverflowState.getArrayOffset();
+        long[] decimal = decimalState.getArray();
+        int decimalOffset = decimalState.getArrayOffset();
 
         long overflow = counterOverflow[counterOverflowOffset + 1];
         if (overflow != 0) {
