@@ -474,12 +474,23 @@ public class BigintGroupByHash
                 return false;
             }
 
-            // putIfAbsent will rehash automatically if rehash is needed, unless there isn't enough memory to do so.
-            // Therefore needRehash will not generally return true even if we have just crossed the capacity boundary.
-            while (lastPosition < positionCount && !needRehash()) {
-                int positionInDictionary = block.getId(lastPosition);
-                registerGroupId(dictionary, positionInDictionary);
-                lastPosition++;
+            int remainingPositions = positionCount - lastPosition;
+
+            while (remainingPositions != 0) {
+                int positionCountUntilRehash = maxFill - nextGroupId;
+                if (positionCountUntilRehash == 0) {
+                    if (!tryRehash()) {
+                        return false;
+                    }
+                }
+                int batchSize = min(min(remainingPositions, MAX_BATCH_SIZE), positionCountUntilRehash);
+
+                for (int i = 0; i < batchSize; i++) {
+                    int positionInDictionary = block.getId(lastPosition);
+                    registerGroupId(dictionary, positionInDictionary);
+                    lastPosition++;
+                }
+                remainingPositions -= batchSize;
             }
             return lastPosition == positionCount;
         }
@@ -694,7 +705,7 @@ public class BigintGroupByHash
     class GetDictionaryGroupIdsWork
             implements Work<GroupByIdBlock>
     {
-        private final BlockBuilder blockBuilder;
+        private final long[] groupIds;
         private final Block dictionary;
         private final DictionaryBlock block;
 
@@ -708,7 +719,7 @@ public class BigintGroupByHash
             updateDictionaryLookBack(dictionary);
 
             // we know the exact size required for the block
-            this.blockBuilder = BIGINT.createFixedSizeBlockBuilder(block.getPositionCount());
+            this.groupIds = new long[block.getPositionCount()];
         }
 
         @Override
@@ -724,13 +735,23 @@ public class BigintGroupByHash
                 return false;
             }
 
-            // putIfAbsent will rehash automatically if rehash is needed, unless there isn't enough memory to do so.
-            // Therefore needRehash will not generally return true even if we have just crossed the capacity boundary.
-            while (lastPosition < positionCount && !needRehash()) {
-                int positionInDictionary = block.getId(lastPosition);
-                int groupId = registerGroupId(dictionary, positionInDictionary);
-                BIGINT.writeLong(blockBuilder, groupId);
-                lastPosition++;
+            int remainingPositions = positionCount - lastPosition;
+
+            while (remainingPositions != 0) {
+                int positionCountUntilRehash = maxFill - nextGroupId;
+                if (positionCountUntilRehash == 0) {
+                    if (!tryRehash()) {
+                        return false;
+                    }
+                }
+                int batchSize = min(min(remainingPositions, MAX_BATCH_SIZE), positionCountUntilRehash);
+
+                for (int i = 0; i < batchSize; i++) {
+                    int positionInDictionary = block.getId(lastPosition);
+                    groupIds[lastPosition] = registerGroupId(dictionary, positionInDictionary);
+                    lastPosition++;
+                }
+                remainingPositions -= batchSize;
             }
             return lastPosition == positionCount;
         }
@@ -741,7 +762,7 @@ public class BigintGroupByHash
             checkState(lastPosition == block.getPositionCount(), "process has not yet finished");
             checkState(!finished, "result has produced");
             finished = true;
-            return new GroupByIdBlock(nextGroupId, blockBuilder.build());
+            return new GroupByIdBlock(nextGroupId, new LongArrayBlock(groupIds.length, Optional.empty(), groupIds));
         }
     }
 
