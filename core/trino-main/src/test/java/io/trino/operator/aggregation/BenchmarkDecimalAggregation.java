@@ -53,8 +53,8 @@ import static org.testng.Assert.assertEquals;
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @Fork(3)
-@Warmup(iterations = 10)
-@Measurement(iterations = 10)
+@Warmup(iterations = 3)
+@Measurement(iterations = 6)
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkDecimalAggregation
 {
@@ -105,8 +105,8 @@ public class BenchmarkDecimalAggregation
         @Param({"avg", "sum"})
         private String function = "avg";
 
-        @Param({"10", "1000"})
-        private int groupCount = 10;
+//        @Param({"10", "1000"})
+        private int groupCount = 1000;
 
         private AggregatorFactory partialAggregatorFactory;
         private AggregatorFactory finalAggregatorFactory;
