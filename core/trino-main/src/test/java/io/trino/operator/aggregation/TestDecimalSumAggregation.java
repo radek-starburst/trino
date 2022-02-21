@@ -13,6 +13,8 @@
  */
 package io.trino.operator.aggregation;
 
+import io.trino.operator.aggregation.state.Int128State;
+import io.trino.operator.aggregation.state.Int128StateFactory;
 import io.trino.operator.aggregation.state.LongState;
 import io.trino.operator.aggregation.state.StateCompiler;
 import io.trino.spi.block.BlockBuilder;
@@ -35,15 +37,15 @@ public class TestDecimalSumAggregation
     private static final BigInteger TWO = new BigInteger("2");
     private static final DecimalType TYPE = createDecimalType(38, 0);
 
-    private LongLongState decimalState;
+    private Int128State decimalState;
     private LongState overflowState;
-    AccumulatorStateFactory<LongLongState> longLongStateFactory;
+    AccumulatorStateFactory<Int128State> longLongStateFactory;
     AccumulatorStateFactory<LongState> longStateFactory;
 
     @BeforeMethod
     public void setUp()
     {
-        longLongStateFactory = StateCompiler.generateStateFactory(LongLongState.class);
+        longLongStateFactory = new Int128StateFactory();
         longStateFactory = StateCompiler.generateStateFactory(LongState.class);
         decimalState = longLongStateFactory.createSingleState();
         overflowState = longStateFactory.createSingleState();
@@ -101,7 +103,7 @@ public class TestDecimalSumAggregation
         addToState(decimalState, overflowState, TWO.pow(125));
         addToState(decimalState, overflowState, TWO.pow(126));
 
-        LongLongState otherDecimalState = longLongStateFactory.createSingleState();
+        Int128State otherDecimalState = longLongStateFactory.createSingleState();
         LongState otherOverflowState = longStateFactory.createSingleState();
 
         addToState(otherDecimalState, otherOverflowState, TWO.pow(125));
@@ -118,7 +120,7 @@ public class TestDecimalSumAggregation
         addToState(decimalState, overflowState, TWO.pow(125).negate());
         addToState(decimalState, overflowState, TWO.pow(126).negate());
 
-        LongLongState otherDecimalState = longLongStateFactory.createSingleState();
+        Int128State otherDecimalState = longLongStateFactory.createSingleState();
         LongState otherOverflowState = longStateFactory.createSingleState();
 
         addToState(otherDecimalState, otherOverflowState, TWO.pow(125).negate());
@@ -141,20 +143,21 @@ public class TestDecimalSumAggregation
                 .hasMessage("Decimal overflow");
     }
 
-    private static void addToState(LongLongState decimalState, LongState overflowState, BigInteger value)
+    private static void addToState(Int128State decimalState, LongState overflowState, BigInteger value)
     {
         BlockBuilder blockBuilder = TYPE.createFixedSizeBlockBuilder(1);
         TYPE.writeObject(blockBuilder, Int128.valueOf(value));
         if (TYPE.isShort()) {
-            DecimalSumAggregation.inputShortDecimal(decimalState, overflowState, blockBuilder.build().getLong(0, 0));
+            DecimalSumAggregation.inputShortDecimal(decimalState, overflowState, blockBuilder.build(), 0);
         }
         else {
             DecimalSumAggregation.inputLongDecimal(decimalState, overflowState, blockBuilder.build(), 0);
         }
     }
 
-    private Int128 getDecimal(LongLongState state)
+    private Int128 getDecimal(Int128State state)
     {
-        return Int128.valueOf(state.getFirst(), state.getSecond());
+        int offset = state.getArrayOffset();
+        return Int128.valueOf(state.getArray()[offset], state.getArray()[offset + 1]);
     }
 }

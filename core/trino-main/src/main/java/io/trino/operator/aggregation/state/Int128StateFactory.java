@@ -94,16 +94,14 @@ public class Int128StateFactory
 
         protected final long[] unscaledDecimal = new long[2];
         protected boolean isNotNull;
-        protected long overflow;
 
         public SingleInt128State() {}
 
         // for copying
-        private SingleInt128State(long[] unscaledDecimal, boolean isNotNull, long overflow)
+        private SingleInt128State(long[] unscaledDecimal, boolean isNotNull)
         {
             arraycopy(unscaledDecimal, 0, this.unscaledDecimal, 0, 2);
             this.isNotNull = isNotNull;
-            this.overflow = overflow;
         }
 
         @Override
@@ -139,7 +137,7 @@ public class Int128StateFactory
         @Override
         public AccumulatorState copy()
         {
-            return new SingleInt128State(unscaledDecimal, isNotNull, overflow);
+            return new SingleInt128State(unscaledDecimal, isNotNull);
         }
     }
 }

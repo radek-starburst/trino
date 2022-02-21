@@ -133,6 +133,7 @@ public class DecimalAverageAggregation
         decimalState.setNotNull();
         counterOverflow[counterOverflowOffset] += 1;
 
+        // TODO: dlaczego offset jest 0?
         long rightLow = block.getLong(position, 0);
         long rightHigh = rightLow >> 63;
 
@@ -195,9 +196,12 @@ public class DecimalAverageAggregation
                     otherDecimal[otherDecimalOffset + 1],
                     decimal,
                     decimalOffset);
-            counterOverflow[counterOverflowOffset] += overflow + otherCounterOverflow[otherCounterOverflowOffset + 1];
+            counterOverflow[counterOverflowOffset + 1] += overflow + otherCounterOverflow[otherCounterOverflowOffset + 1];
         }
         else {
+            if (!otherDecimalState.isNotNull()) {
+                return;
+            }
             counterOverflowState.setNotNull();
             decimalState.setNotNull();
             decimal[decimalOffset] = otherDecimal[otherDecimalOffset];
