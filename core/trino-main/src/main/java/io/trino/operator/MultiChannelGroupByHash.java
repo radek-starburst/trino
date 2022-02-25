@@ -48,6 +48,7 @@ import static io.trino.sql.gen.JoinCompiler.PagesHashStrategyFactory;
 import static io.trino.util.HashCollisionsEstimator.estimateNumberOfHashCollisions;
 import static it.unimi.dsi.fastutil.HashCommon.arraySize;
 import static it.unimi.dsi.fastutil.HashCommon.murmurHash3;
+import static java.lang.Math.min;
 import static java.lang.Math.multiplyExact;
 import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
@@ -58,6 +59,7 @@ public class MultiChannelGroupByHash
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(MultiChannelGroupByHash.class).instanceSize();
     private static final float FILL_RATIO = 0.75f;
+    private static final int MAX_BATCH_SIZE = 128;
     // Max (page value count / cumulative dictionary size) to trigger the low cardinality case
     private static final double SMALL_DICTIONARIES_MAX_CARDINALITY_RATIO = .25;
 
@@ -609,18 +611,28 @@ public class MultiChannelGroupByHash
             int positionCount = page.getPositionCount();
             checkState(lastPosition < positionCount, "position count out of bound");
 
-            // needRehash() == true indicates we have reached capacity boundary and a rehash is needed.
+            // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
             // We can only proceed if tryRehash() successfully did a rehash.
             if (needRehash() && !tryRehash()) {
                 return false;
             }
 
-            // putIfAbsent will rehash automatically if rehash is needed, unless there isn't enough memory to do so.
-            // Therefore needRehash will not generally return true even if we have just crossed the capacity boundary.
-            while (lastPosition < positionCount && !needRehash()) {
-                // get the group for the current row
-                putIfAbsent(lastPosition, page);
-                lastPosition++;
+            int remainingPositions = positionCount - lastPosition;
+
+            while (remainingPositions != 0) {
+                int positionCountUntilRehash = maxFill - nextGroupId;
+                if (positionCountUntilRehash == 0) {
+                    if (!tryRehash()) {
+                        return false;
+                    }
+                }
+                int batchSize = min(min(remainingPositions, MAX_BATCH_SIZE), positionCountUntilRehash);
+
+                long[] groupIds = new long[batchSize];
+                batchedPutIfAbsent(page, lastPosition, batchSize, groupIds, 0);
+
+                lastPosition += batchSize;
+                remainingPositions -= batchSize;
             }
             return lastPosition == positionCount;
         }
@@ -776,7 +788,6 @@ public class MultiChannelGroupByHash
         public GetNonDictionaryGroupIdsWork(Page page)
         {
             this.page = requireNonNull(page, "page is null");
-            // we know the exact size required for the block
             groupIds = new long[page.getPositionCount()];
         }
 
@@ -784,7 +795,7 @@ public class MultiChannelGroupByHash
         public boolean process()
         {
             int positionCount = page.getPositionCount();
-            checkState(lastPosition <= positionCount, "position count out of bound");
+            checkState(lastPosition < positionCount, "position count out of bound");
             checkState(!finished);
 
             // needRehash() == false indicates we have reached capacity boundary and a rehash is needed.
@@ -793,12 +804,21 @@ public class MultiChannelGroupByHash
                 return false;
             }
 
-            // putIfAbsent will rehash automatically if rehash is needed, unless there isn't enough memory to do so.
-            // Therefore needRehash will not generally return true even if we have just crossed the capacity boundary.
-            while (lastPosition < positionCount && !needRehash()) {
-                // output the group id for this row
-                groupIds[lastPosition] = putIfAbsent(lastPosition, page);
-                lastPosition++;
+            int remainingPositions = positionCount - lastPosition;
+
+            while (remainingPositions != 0) {
+                int positionCountUntilRehash = maxFill - nextGroupId;
+                if (positionCountUntilRehash == 0) {
+                    if (!tryRehash()) {
+                        return false;
+                    }
+                }
+                int batchSize = min(min(remainingPositions, MAX_BATCH_SIZE), positionCountUntilRehash);
+
+                batchedPutIfAbsent(page, lastPosition, batchSize, groupIds, lastPosition);
+
+                lastPosition += batchSize;
+                remainingPositions -= batchSize;
             }
             return lastPosition == positionCount;
         }
@@ -810,6 +830,52 @@ public class MultiChannelGroupByHash
             checkState(!finished, "result has produced");
             finished = true;
             return new GroupByIdBlock(nextGroupId, new LongArrayBlock(groupIds.length, Optional.empty(), groupIds));
+        }
+    }
+
+    private void batchedPutIfAbsent(Page page, int pageOffset, int batchSize, long[] batchedGroupIds, int batchedGroupIdOffset)
+    {
+        long[] rawHashes = new long[batchSize];
+        int[] hashPositions = new int[batchSize];
+        for (int i = 0; i < batchSize; i++) {
+            rawHashes[i] = hashGenerator.hashPosition(pageOffset + i, page);
+            hashPositions[i] = (int) getHashPosition(rawHashes[i], mask);
+        }
+
+        for (int i = 0; i < batchSize; i++) {
+            batchedGroupIds[batchedGroupIdOffset + i] = groupAddressByHash[hashPositions[i]];
+        }
+
+        for (int i = 0; i < batchSize; i++) {
+            if (batchedGroupIds[batchedGroupIdOffset + i] != -1) {
+                boolean match = rawHashByHashPosition[hashPositions[i]] == (byte) rawHashes[i];
+                // Same as
+                // if (!match)
+                //   batchedGroupIds[groupIdOffset + i] = -1;
+                // but without explicit branches
+                batchedGroupIds[batchedGroupIdOffset + i] = (batchedGroupIds[batchedGroupIdOffset + i] + 1) * (match ? 1 : 0) - 1;
+            }
+        }
+
+        for (int i = 0; i < batchSize; i++) {
+            if (batchedGroupIds[batchedGroupIdOffset + i] != -1) {
+                boolean match = hashStrategy.positionNotDistinctFromRow(
+                        decodeSliceIndex(batchedGroupIds[batchedGroupIdOffset + i]),
+                        decodePosition(batchedGroupIds[batchedGroupIdOffset + i]),
+                        pageOffset + i,
+                        page,
+                        channels);
+                batchedGroupIds[batchedGroupIdOffset + i] = (batchedGroupIds[batchedGroupIdOffset + i] + 1) * (match ? 1 : 0) - 1;
+            }
+        }
+
+        for (int i = 0; i < batchSize; i++) {
+            if (batchedGroupIds[batchedGroupIdOffset + i] == -1) {
+                batchedGroupIds[batchedGroupIdOffset + i] = putIfAbsent(pageOffset + i, page, rawHashes[i]);
+            }
+            else {
+                batchedGroupIds[batchedGroupIdOffset + i] = groupIdsByHash[hashPositions[i]];
+            }
         }
     }
 
