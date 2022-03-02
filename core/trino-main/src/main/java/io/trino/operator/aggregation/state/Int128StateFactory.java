@@ -62,9 +62,9 @@ public class Int128StateFactory
         }
 
         @Override
-        public void setNotNull()
+        public void setIsNotNull(boolean isNotNull)
         {
-            isNotNull.set(getGroupId(), true);
+            this.isNotNull.set(getGroupId(), isNotNull);
         }
 
         @Override
@@ -111,9 +111,9 @@ public class Int128StateFactory
         }
 
         @Override
-        public void setNotNull()
+        public void setIsNotNull(boolean isNotNull)
         {
-            isNotNull = true;
+            this.isNotNull = isNotNull;
         }
 
         @Override

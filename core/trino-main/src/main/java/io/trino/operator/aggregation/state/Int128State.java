@@ -22,7 +22,7 @@ public interface Int128State
 {
     boolean isNotNull();
 
-    void setNotNull();
+    void setIsNotNull(boolean isNotNull);
 
     long[] getArray();
 
