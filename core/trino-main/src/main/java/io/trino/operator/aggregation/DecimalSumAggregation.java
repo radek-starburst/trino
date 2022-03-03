@@ -142,8 +142,9 @@ public class DecimalSumAggregation
                 decimal,
                 decimalOffset);
 
-        overflowState.setValue(overflowState.getValue() + overflow);
-        overflowState.setNull(false);
+        overflow += overflowState.getValue();
+        overflowState.setValue(overflow);
+        overflowState.setNull(overflow == 0);
     }
 
     public static void combine(Int128State decimalState, NullableLongState overflowState, Int128State otherDecimalState, NullableLongState otherOverflowState)
@@ -170,11 +171,7 @@ public class DecimalSumAggregation
             overflowState.setNull(false);
         }
         else {
-            // TODO: Dlaczego tego teraz potrzebujemy a kiedys nie?
-            if (!otherDecimalState.isNotNull()) {
-                return;
-            }
-            decimalState.setIsNotNull(true);
+            decimalState.setIsNotNull(otherDecimalState.isNotNull());
             decimal[decimalOffset] = otherDecimal[otherDecimalOffset];
             decimal[decimalOffset + 1] = otherDecimal[otherDecimalOffset + 1];
             overflowState.set(otherOverflowState);
