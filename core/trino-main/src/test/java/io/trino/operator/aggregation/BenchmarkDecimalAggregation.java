@@ -60,8 +60,8 @@ import static org.testng.Assert.assertEquals;
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @Fork(1)
-@Warmup(iterations = 3)
-@Measurement(iterations = 6)
+@Warmup(iterations = 4)
+@Measurement(iterations = 10)
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkDecimalAggregation
 {
@@ -109,7 +109,7 @@ public class BenchmarkDecimalAggregation
         @Param({"LONG"})
         private String type = "SHORT";
 
-        @Param({"avg"})
+        @Param({"avg", "sum"})
         private String function = "avg";
 
         @Param({"1000"})
@@ -246,18 +246,17 @@ public class BenchmarkDecimalAggregation
 
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
                 .withOptions(options -> options
-                        .jvmArgs("-Xmx32g")
-                        .include("benchmarkEvaluateFinal")
+//                        .jvmArgs("-Xmx32g")
+//                        .include("benchmarkEvaluateFinal")
 //                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", finalProfilerOutputDir))
 //                        .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", profilerOutputDir))
                         .output(String.format("%s/%s", finalProfilerOutputDir, "stdout.log"))
-                        .jvmArgsAppend(
-                                "-XX:+UnlockDiagnosticVMOptions",
-                                "-XX:+PrintAssembly",
-                                "-XX:+LogCompilation",
-                                "-XX:+TraceClassLoading")
+//                        .jvmArgsAppend(
+//                                "-XX:+UnlockDiagnosticVMOptions",
+//                                "-XX:+PrintAssembly",
+//                                "-XX:+LogCompilation",
+//                                "-XX:+TraceClassLoading")
                                 )
-
                 .run();
     }
 }

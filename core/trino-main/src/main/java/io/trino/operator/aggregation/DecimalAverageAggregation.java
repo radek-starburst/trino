@@ -144,8 +144,9 @@ public class DecimalAverageAggregation
                 decimal,
                 decimalOffset);
 
+        overflow += counterOverflowState.getSecond();
         counterOverflowState.setSecondNull(overflow == 0);
-        counterOverflowState.setSecond(counterOverflowState.getSecond() + overflow);
+        counterOverflowState.setSecond(overflow);
     }
 
     public static void inputLongDecimal(Int128State decimalState, LongLongState counterOverflowState, Block block, int position)
@@ -167,9 +168,9 @@ public class DecimalAverageAggregation
                 rightLow,
                 decimal,
                 decimalOffset);
-
+        overflow += counterOverflowState.getSecond();
         counterOverflowState.setSecondNull(overflow == 0);
-        counterOverflowState.setSecond(counterOverflowState.getSecond() + overflow);
+        counterOverflowState.setSecond(overflow);
     }
 
     public static void combine(Int128State decimalState, LongLongState counterOverflowState, Int128State otherDecimalState, LongLongState otherCounterOverflowState)
@@ -179,20 +180,14 @@ public class DecimalAverageAggregation
         long[] otherDecimal = otherDecimalState.getArray();
         int otherDecimalOffset = otherDecimalState.getArrayOffset();
 
-        long overflow = 0;
-        if (decimalState.isNotNull()) {
-            overflow = addWithOverflow(
-                    decimal[decimalOffset],
-                    decimal[decimalOffset + 1],
-                    otherDecimal[otherDecimalOffset],
-                    otherDecimal[otherDecimalOffset + 1],
-                    decimal,
-                    decimalOffset);
-        } else {
-            decimalState.setIsNotNull(otherDecimalState.isNotNull());
-            decimal[decimalOffset] = otherDecimal[otherDecimalOffset];
-            decimal[decimalOffset + 1] = otherDecimal[otherDecimalOffset + 1];
-        }
+        long overflow = addWithOverflow(
+                decimal[decimalOffset],
+                decimal[decimalOffset + 1],
+                otherDecimal[otherDecimalOffset],
+                otherDecimal[otherDecimalOffset + 1],
+                decimal,
+                decimalOffset);
+        decimalState.setIsNotNull(decimalState.isNotNull() | otherDecimalState.isNotNull());
         counterOverflowState.setFirst(counterOverflowState.getFirst() + otherCounterOverflowState.getFirst());
         counterOverflowState.setFirstNull(counterOverflowState.isFirstNull() & otherCounterOverflowState.isFirstNull());
         counterOverflowState.setSecond(counterOverflowState.getSecond() + overflow + otherCounterOverflowState.getSecond());

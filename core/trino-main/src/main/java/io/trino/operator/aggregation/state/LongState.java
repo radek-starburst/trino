@@ -21,4 +21,6 @@ public interface LongState
     long getValue();
 
     void setValue(long value);
+
+    long addValue(long value);
 }

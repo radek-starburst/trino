@@ -442,12 +442,29 @@ public final class StateCompiler
             fieldDefinitions.add(generateField(definition, constructor, field));
         }
 
+        // Generate adders
+        for (StateField field : fields) {
+            if (hasAdder(clazz, field.name)) {
+
+            }
+        }
+
         constructor.getBody()
                 .ret();
 
         generateCopy(definition, fields, fieldDefinitions);
 
         return defineClass(definition, clazz, classLoader);
+    }
+
+
+    private static <T> boolean hasAdder(Class<T> clazz, String fieldName) {
+        for (Method method : clazz.getMethods()) {
+            if (String.format("%s%s", "add", fieldName).equals(method.getName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void generateCopy(ClassDefinition definition, List<StateField> fields, List<FieldDefinition> fieldDefinitions)
@@ -701,6 +718,7 @@ public final class StateCompiler
     {
         checkArgument(clazz.isInterface(), clazz.getName() + " is not an interface");
         Set<String> setters = new HashSet<>();
+        Set<String> adders = new HashSet<>();
         Set<String> getters = new HashSet<>();
         Set<String> isGetters = new HashSet<>();
 
@@ -750,11 +768,20 @@ public final class StateCompiler
                 checkArgument(method.getReturnType().equals(void.class), "%s may not return a value", method.getName());
                 setters.add(name);
             }
+            else if (method.getName().startsWith("add")) {
+                String name = method.getName().substring(3);
+                checkArgument(method.getParameterTypes().length == 1, "Expected adder to have one parameter");
+                checkArgument(fieldTypes.get(name).equals(method.getParameterTypes()[0]),
+                        "Expected %s to accept type %s, but found %s", method.getName(), fieldTypes.get(name), method.getParameterTypes()[0]);
+                checkArgument(method.getReturnType().equals(method.getParameterTypes()[0]), "Return type for %s must be same as parameter type", method.getName());
+                adders.add(name);
+            }
             else {
                 throw new IllegalArgumentException("Cannot generate implementation for method: " + method.getName());
             }
         }
         checkArgument(getters.size() + isGetters.size() == setters.size() && setters.size() == fields.size(), "Wrong number of getters/setters");
+        checkArgument( adders.size() <= fields.size(), "Wrong number of adders");
     }
 
     private static final class StateField
