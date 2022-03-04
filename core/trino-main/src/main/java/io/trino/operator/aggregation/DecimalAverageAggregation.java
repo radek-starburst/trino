@@ -25,14 +25,13 @@ import io.trino.operator.aggregation.AggregationMetadata.AccumulatorStateDescrip
 import io.trino.operator.aggregation.state.Int128State;
 import io.trino.operator.aggregation.state.Int128StateFactory;
 import io.trino.operator.aggregation.state.Int128StateSerializer;
-import io.trino.operator.aggregation.state.LongState;
-import io.trino.operator.aggregation.state.NullableLongState;
 import io.trino.operator.aggregation.state.StateCompiler;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Int128;
+import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeSignature;
 
@@ -45,12 +44,12 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 import static io.trino.metadata.FunctionKind.AGGREGATE;
+import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.Decimals.overflows;
 import static io.trino.spi.type.Decimals.writeShortDecimal;
 import static io.trino.spi.type.Int128Math.addWithOverflow;
 import static io.trino.spi.type.Int128Math.divideRoundUp;
 import static io.trino.spi.type.TypeSignatureParameter.typeVariable;
-import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.util.Reflection.methodHandle;
 import static java.math.BigDecimal.ROUND_HALF_UP;
 
@@ -86,7 +85,8 @@ public class DecimalAverageAggregation
                         AGGREGATE),
                 new AggregationFunctionMetadata(
                         false,
-                        VARBINARY.getTypeSignature()));
+                        DecimalType.createDecimalType(Decimals.MAX_SHORT_PRECISION + 1).getTypeSignature(),
+                        RowType.anonymous(ImmutableList.of(BIGINT, BIGINT)).getTypeSignature()));
     }
 
     @Override
