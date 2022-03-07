@@ -31,7 +31,6 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Int128;
-import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeSignature;
 
@@ -45,10 +44,12 @@ import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 import static io.trino.metadata.FunctionKind.AGGREGATE;
 import static io.trino.spi.type.BigintType.BIGINT;
+import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.Decimals.overflows;
 import static io.trino.spi.type.Decimals.writeShortDecimal;
 import static io.trino.spi.type.Int128Math.addWithOverflow;
 import static io.trino.spi.type.Int128Math.divideRoundUp;
+import static io.trino.spi.type.TypeSignatureParameter.anonymousField;
 import static io.trino.spi.type.TypeSignatureParameter.typeVariable;
 import static io.trino.util.Reflection.methodHandle;
 import static java.math.BigDecimal.ROUND_HALF_UP;
@@ -86,7 +87,11 @@ public class DecimalAverageAggregation
                 new AggregationFunctionMetadata(
                         false,
                         DecimalType.createDecimalType(Decimals.MAX_SHORT_PRECISION + 1).getTypeSignature(),
-                        RowType.anonymous(ImmutableList.of(BIGINT, BIGINT)).getTypeSignature()));
+                        TypeSignature.rowType(
+                                anonymousField(BIGINT.getTypeSignature()),
+                                anonymousField(BOOLEAN.getTypeSignature()),
+                                anonymousField(BIGINT.getTypeSignature()),
+                                anonymousField(BOOLEAN.getTypeSignature()))));
     }
 
     @Override
