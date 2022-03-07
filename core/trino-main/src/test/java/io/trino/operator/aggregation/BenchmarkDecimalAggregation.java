@@ -246,16 +246,16 @@ public class BenchmarkDecimalAggregation
 
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
                 .withOptions(options -> options
-//                        .jvmArgs("-Xmx32g")
+                        .jvmArgs("-Xmx32g")
 //                        .include("benchmarkEvaluateFinal")
-//                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", finalProfilerOutputDir))
-//                        .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", profilerOutputDir))
+                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", finalProfilerOutputDir))
+                        .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", profilerOutputDir))
                         .output(String.format("%s/%s", finalProfilerOutputDir, "stdout.log"))
-//                        .jvmArgsAppend(
-//                                "-XX:+UnlockDiagnosticVMOptions",
-//                                "-XX:+PrintAssembly",
-//                                "-XX:+LogCompilation",
-//                                "-XX:+TraceClassLoading")
+                        .jvmArgsAppend(
+                                "-XX:+UnlockDiagnosticVMOptions",
+                                "-XX:+PrintAssembly",
+                                "-XX:+LogCompilation",
+                                "-XX:+TraceClassLoading")
                                 )
                 .run();
     }
