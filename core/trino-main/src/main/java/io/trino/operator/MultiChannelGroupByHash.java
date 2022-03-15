@@ -54,7 +54,7 @@ public class MultiChannelGroupByHash
         implements GroupByHash
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(MultiChannelGroupByHash.class).instanceSize();
-    private static final float FILL_RATIO = 0.75f;
+    private static final float FILL_RATIO = 0.25f;
     private static final int MAX_BATCH_SIZE = 128;
     // Max (page value count / cumulative dictionary size) to trigger the low cardinality case
     private static final double SMALL_DICTIONARIES_MAX_CARDINALITY_RATIO = .25;
