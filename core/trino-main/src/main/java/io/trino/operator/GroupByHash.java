@@ -68,7 +68,7 @@ public interface GroupByHash
 
     int getGroupCount();
 
-    void appendValuesTo(int groupId, PageBuilder pageBuilder);
+    void appendValuesTo(int groupId, PageBuilder pageBuilder, int outputChannelOffset);
 
     Work<?> addPage(Page page);
 
