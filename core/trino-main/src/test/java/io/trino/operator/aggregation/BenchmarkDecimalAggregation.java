@@ -224,6 +224,9 @@ public class BenchmarkDecimalAggregation
         // ensure the benchmarks are valid before running
 //        new BenchmarkDecimalAggregation().verify();
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
+                .withOptions(options ->
+                options
+                .output(System.getProperty("outputDirectory")))
                 .run();
     }
 }
