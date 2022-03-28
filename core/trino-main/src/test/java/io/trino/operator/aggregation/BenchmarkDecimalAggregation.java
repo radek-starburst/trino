@@ -35,7 +35,6 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
-import org.openjdk.jmh.runner.options.WarmupMode;
 import org.testng.annotations.Test;
 
 import java.util.OptionalInt;
@@ -52,7 +51,7 @@ import static org.testng.Assert.assertEquals;
 
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@Fork(3)
+@Fork(1)
 @Warmup(iterations = 10)
 @Measurement(iterations = 10)
 @BenchmarkMode(Mode.AverageTime)
@@ -99,13 +98,13 @@ public class BenchmarkDecimalAggregation
     @State(Scope.Thread)
     public static class BenchmarkData
     {
-        @Param({"SHORT", "LONG"})
+        @Param({"LONG"})
         private String type = "SHORT";
 
         @Param({"avg", "sum"})
         private String function = "avg";
 
-        @Param({"10", "1000"})
+        @Param({"1000"})
         private int groupCount = 10;
 
         private AggregatorFactory partialAggregatorFactory;
@@ -216,6 +215,35 @@ public class BenchmarkDecimalAggregation
         // ensure the benchmarks are valid before running
         new BenchmarkDecimalAggregation().verify();
 
-        Benchmarks.benchmark(BenchmarkDecimalAggregation.class, WarmupMode.BULK).run();
+//        String profilerOutputDir = null;
+//
+//        try {
+//            String jmhDir = "jmh";
+//            new File(jmhDir).mkdirs();
+//            String outDir = jmhDir + "/";
+//            String end = String.valueOf(Files.list(Paths.get(jmhDir))
+//                    .map(path -> path.getFileName().toString())
+//                    .filter(path -> path.matches("\\d+"))
+//                    .map(path -> Integer.parseInt(path) + 1)
+//                    .sorted(Comparator.reverseOrder())
+//                    .findFirst().orElse(0));
+//            outDir = outDir + System.getProperty("outputDirectory", end);
+//            new File(outDir).mkdirs();
+//            profilerOutputDir = outDir;
+//        }
+//        catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
+//        String finalProfilerOutputDir = profilerOutputDir;
+
+        Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
+                .includeMethod("benchmarkEvaluateIntermediate")
+                .run();
+//                .withOptions(options -> options
+//                        .jvmArgs("-Xmx32g")
+//                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", finalProfilerOutputDir))
+//                        .output(String.format("%s/%s", finalProfilerOutputDir, "stdout.log")))
+//
+//                .run();
     }
 }

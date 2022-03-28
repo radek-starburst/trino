@@ -172,9 +172,7 @@ public class DecimalAverageAggregation
                 rightHigh,
                 rightLow,
                 decimal,
-                decimalOffset);
-
-        overflow += overflowState.getValue();
+                decimalOffset) + overflowState.getValue();
         overflowState.setNull(overflow == 0);
         overflowState.setValue(overflow);
     }

@@ -34,9 +34,11 @@ import io.trino.operator.aggregation.AggregationMetadata.AccumulatorStateDescrip
 import io.trino.operator.window.InternalWindowIndex;
 import io.trino.spi.Page;
 import io.trino.spi.block.AbstractRowBlock;
+import io.trino.spi.block.AbstractSingleRowBlock;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ColumnarRow;
+import io.trino.spi.block.SingleRowBlockWriter;
 import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateFactory;
 import io.trino.spi.function.AccumulatorStateSerializer;
@@ -843,19 +845,20 @@ public final class AccumulatorCompiler
                         .condition(isNull)
                         .ifTrue(bc));
             }
-            int i = 0;
+            int i = 0, j = 0;
             body.append(rowBuilder.set(out.invoke("beginBlockEntry", BlockBuilder.class)));
             for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
                 BytecodeExpression stateSerializer = thisVariable.getField(stateFieldAndDescriptor.getStateSerializerField());
                 BytecodeExpression state = thisVariable.getField(stateFieldAndDescriptor.getStateField());
                 if (isNotNullFunction.isPresent() && i == 0) {
                     i = 1;
-                    body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder));
+                    body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder.cast(SingleRowBlockWriter.class).invoke("getFieldBlockBuilder", BlockBuilder.class, constantInt(j))));
                 }
                 else {
                     body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)))
-                            .append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder));
+                            .append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder.cast(SingleRowBlockWriter.class).invoke("getFieldBlockBuilder", BlockBuilder.class, constantInt(j))));
                 }
+                j++;
             }
             body.append(out.invoke("closeEntry", BlockBuilder.class).pop())
                     .ret();
@@ -903,10 +906,12 @@ public final class AccumulatorCompiler
 
             body.append(rowBuilder.set(out.invoke("beginBlockEntry", BlockBuilder.class)));
 
+            int j = 0;
             for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
                 BytecodeExpression stateSerializer = thisVariable.getField(stateFieldAndDescriptor.getStateSerializerField());
                 BytecodeExpression state = thisVariable.getField(stateFieldAndDescriptor.getStateField());
-                body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder));
+                body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder.cast(SingleRowBlockWriter.class).invoke("getFieldBlockBuilder", BlockBuilder.class, constantInt(j))));
+                j++;
             }
             body.append(out.invoke("closeEntry", BlockBuilder.class).pop())
                     .ret();
