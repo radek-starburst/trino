@@ -237,7 +237,6 @@ public class BenchmarkDecimalAggregation
 //        String finalProfilerOutputDir = profilerOutputDir;
 
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
-                .includeMethod("benchmarkEvaluateIntermediate")
                 .run();
 //                .withOptions(options -> options
 //                        .jvmArgs("-Xmx32g")
