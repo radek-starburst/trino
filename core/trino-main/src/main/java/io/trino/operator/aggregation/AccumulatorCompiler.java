@@ -852,11 +852,11 @@ public final class AccumulatorCompiler
                 BytecodeExpression state = thisVariable.getField(stateFieldAndDescriptor.getStateField());
                 if (isNotNullFunction.isPresent() && i == 0) {
                     i = 1;
-                    body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder));
+                    body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder.cast(SingleRowBlockWriter.class).invoke("getFieldBlockBuilder", BlockBuilder.class, constantInt(j))));
                 }
                 else {
                     body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)))
-                            .append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder));
+                            .append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder.cast(SingleRowBlockWriter.class).invoke("getFieldBlockBuilder", BlockBuilder.class, constantInt(j))));
                 }
                 j++;
             }
