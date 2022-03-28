@@ -35,8 +35,15 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.profile.AsyncProfiler;
+import org.openjdk.jmh.profile.DTraceAsmProfiler;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.OptionalInt;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -52,8 +59,8 @@ import static org.testng.Assert.assertEquals;
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @Fork(1)
-@Warmup(iterations = 10)
-@Measurement(iterations = 10)
+@Warmup(iterations = 4)
+@Measurement(iterations = 8)
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkDecimalAggregation
 {
@@ -61,7 +68,7 @@ public class BenchmarkDecimalAggregation
 
     @Benchmark
     @OperationsPerInvocation(ELEMENT_COUNT)
-    public GroupedAggregator benchmark(BenchmarkData data)
+    public GroupedAggregator benchmarkAddInput(BenchmarkData data)
     {
         GroupedAggregator aggregator = data.getPartialAggregatorFactory().createGroupedAggregator();
         aggregator.processPage(data.getGroupIds(), data.getValues());
@@ -72,11 +79,9 @@ public class BenchmarkDecimalAggregation
     @OperationsPerInvocation(ELEMENT_COUNT)
     public Block benchmarkEvaluateIntermediate(BenchmarkData data)
     {
-        GroupedAggregator aggregator = data.getPartialAggregatorFactory().createGroupedAggregator();
-        aggregator.processPage(data.getGroupIds(), data.getValues());
-        BlockBuilder builder = aggregator.getType().createBlockBuilder(null, data.getGroupCount());
+        BlockBuilder builder = data.aggregator.getType().createBlockBuilder(null, data.getGroupCount());
         for (int groupId = 0; groupId < data.getGroupCount(); groupId++) {
-            aggregator.evaluate(groupId, builder);
+            data.aggregator.evaluate(groupId, builder);
         }
         return builder.build();
     }
@@ -101,10 +106,10 @@ public class BenchmarkDecimalAggregation
         @Param({"LONG"})
         private String type = "SHORT";
 
-        @Param({"avg", "sum"})
+        @Param({"avg"})
         private String function = "avg";
 
-        @Param({"1000"})
+        @Param({"10000"})
         private int groupCount = 10;
 
         private AggregatorFactory partialAggregatorFactory;
@@ -112,6 +117,7 @@ public class BenchmarkDecimalAggregation
         private GroupByIdBlock groupIds;
         private Page values;
         private Page intermediateValues;
+        private GroupedAggregator aggregator;
 
         @Setup
         public void setup()
@@ -137,6 +143,8 @@ public class BenchmarkDecimalAggregation
             }
             groupIds = new GroupByIdBlock(groupCount, ids.build());
             intermediateValues = new Page(createIntermediateValues(partialAggregatorFactory.createGroupedAggregator(), groupIds, values));
+            aggregator = getPartialAggregatorFactory().createGroupedAggregator();
+            aggregator.processPage(groupIds, values);
         }
 
         private Block createIntermediateValues(GroupedAggregator aggregator, GroupByIdBlock groupIds, Page inputPage)
@@ -148,6 +156,7 @@ public class BenchmarkDecimalAggregation
             }
             return builder.build();
         }
+        // TODO aggregator via getter
 
         private Page createValues(TestingFunctionResolution functionResolution, DecimalType type, ValueWriter writer)
         {
@@ -206,43 +215,15 @@ public class BenchmarkDecimalAggregation
 
         assertEquals(data.groupIds.getPositionCount(), data.getValues().getPositionCount());
 
-        new BenchmarkDecimalAggregation().benchmark(data);
+        new BenchmarkDecimalAggregation().benchmarkEvaluateIntermediate(data);
     }
 
     public static void main(String[] args)
             throws Exception
     {
         // ensure the benchmarks are valid before running
-        new BenchmarkDecimalAggregation().verify();
-
-//        String profilerOutputDir = null;
-//
-//        try {
-//            String jmhDir = "jmh";
-//            new File(jmhDir).mkdirs();
-//            String outDir = jmhDir + "/";
-//            String end = String.valueOf(Files.list(Paths.get(jmhDir))
-//                    .map(path -> path.getFileName().toString())
-//                    .filter(path -> path.matches("\\d+"))
-//                    .map(path -> Integer.parseInt(path) + 1)
-//                    .sorted(Comparator.reverseOrder())
-//                    .findFirst().orElse(0));
-//            outDir = outDir + System.getProperty("outputDirectory", end);
-//            new File(outDir).mkdirs();
-//            profilerOutputDir = outDir;
-//        }
-//        catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
-//        String finalProfilerOutputDir = profilerOutputDir;
-
+//        new BenchmarkDecimalAggregation().verify();
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
                 .run();
-//                .withOptions(options -> options
-//                        .jvmArgs("-Xmx32g")
-//                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", finalProfilerOutputDir))
-//                        .output(String.format("%s/%s", finalProfilerOutputDir, "stdout.log")))
-//
-//                .run();
     }
 }
