@@ -26,6 +26,9 @@ import io.trino.operator.aggregation.state.Int128State;
 import io.trino.operator.aggregation.state.Int128StateFactory;
 import io.trino.operator.aggregation.state.Int128StateSerializer;
 import io.trino.operator.aggregation.state.LongState;
+import io.trino.operator.aggregation.state.LongState2;
+import io.trino.operator.aggregation.state.LongState2Factory;
+import io.trino.operator.aggregation.state.LongState2Serializer;
 import io.trino.operator.aggregation.state.NullableLongState;
 import io.trino.operator.aggregation.state.StateCompiler;
 import io.trino.spi.block.Block;
@@ -60,13 +63,13 @@ public class DecimalAverageAggregation
     public static final DecimalAverageAggregation DECIMAL_AVERAGE_AGGREGATION = new DecimalAverageAggregation();
 
     private static final String NAME = "avg";
-    private static final MethodHandle SHORT_DECIMAL_INPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "inputShortDecimal", Int128State.class, LongState.class, NullableLongState.class, Block.class, int.class);
-    private static final MethodHandle LONG_DECIMAL_INPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "inputLongDecimal", Int128State.class, LongState.class, NullableLongState.class, Block.class, int.class);
+    private static final MethodHandle SHORT_DECIMAL_INPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "inputShortDecimal", Int128State.class, LongState2.class, LongState2.class, Block.class, int.class, long.class);
+    private static final MethodHandle LONG_DECIMAL_INPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "inputLongDecimal", Int128State.class, LongState2.class, LongState2.class, Block.class, int.class, long.class);
 
-    private static final MethodHandle SHORT_DECIMAL_OUTPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "outputShortDecimal", DecimalType.class, Int128State.class, LongState.class, NullableLongState.class, BlockBuilder.class);
-    private static final MethodHandle LONG_DECIMAL_OUTPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "outputLongDecimal", DecimalType.class, Int128State.class, LongState.class, NullableLongState.class, BlockBuilder.class);
+    private static final MethodHandle SHORT_DECIMAL_OUTPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "outputShortDecimal", DecimalType.class, Int128State.class, LongState2.class, LongState2.class, BlockBuilder.class);
+    private static final MethodHandle LONG_DECIMAL_OUTPUT_FUNCTION = methodHandle(DecimalAverageAggregation.class, "outputLongDecimal", DecimalType.class, Int128State.class, LongState2.class, LongState2.class, BlockBuilder.class);
 
-    private static final MethodHandle COMBINE_FUNCTION = methodHandle(DecimalAverageAggregation.class, "combine", Int128State.class, LongState.class, NullableLongState.class, Int128State.class, LongState.class, NullableLongState.class);
+    private static final MethodHandle COMBINE_FUNCTION = methodHandle(DecimalAverageAggregation.class, "combine", Int128State.class, LongState2.class, LongState2.class, Int128State.class, LongState2.class, LongState2.class, long.class);
     private static final MethodHandle IS_NULL_FUNCTION = methodHandle(DecimalAverageAggregation.class, "isNull", Int128State.class);
 
     private static final BigInteger TWO = new BigInteger("2");
@@ -122,22 +125,23 @@ public class DecimalAverageAggregation
                         stateSerializer,
                         new Int128StateFactory()),
                         new AccumulatorStateDescriptor<>(
-                                LongState.class,
-                                StateCompiler.generateStateSerializer(LongState.class),
-                                StateCompiler.generateStateFactory(LongState.class)),
+                                LongState2.class,
+                                new LongState2Serializer(),
+                                new LongState2Factory()),
                         new AccumulatorStateDescriptor<>(
-                                NullableLongState.class,
-                                StateCompiler.generateStateSerializer(NullableLongState.class),
-                                StateCompiler.generateStateFactory(NullableLongState.class))), ImmutableList.of(), Optional.of(IS_NULL_FUNCTION));
+                                LongState2.class,
+                                new LongState2Serializer(),
+                                new LongState2Factory())),
+                                ImmutableList.of(), Optional.of(IS_NULL_FUNCTION));
     }
 
-    public static void inputShortDecimal(Int128State decimalState, LongState counterState, NullableLongState overflowState, Block block, int position)
+    public static void inputShortDecimal(Int128State decimalState, LongState2 counterState, LongState2 overflowState, Block block, int position, long groupId)
     {
-        long[] decimal = decimalState.getArray();
-        int decimalOffset = decimalState.getArrayOffset();
+        long[] decimal = decimalState.getArray((int) groupId);
+        int decimalOffset = decimalState.getArrayOffset((int) groupId);
 
-        decimalState.setNotNull(true);
-        counterState.setValue(counterState.getValue() + 1);
+        decimalState.setNotNull((int) groupId,true);
+        counterState.setValue((int) groupId, counterState.getValue() + 1);
 
         long rightLow = block.getLong(position, 0);
         long rightHigh = rightLow >> 63;
@@ -150,18 +154,17 @@ public class DecimalAverageAggregation
                 decimal,
                 decimalOffset);
 
-        overflow += overflowState.getValue();
-        overflowState.setNull(overflow == 0);
-        overflowState.setValue(overflow);
+        overflow += overflowState.getValue((int) groupId);
+        overflowState.setValue((int) groupId, overflow);
     }
 
-    public static void inputLongDecimal(Int128State decimalState, LongState counterState, NullableLongState overflowState, Block block, int position)
+    public static void inputLongDecimal(Int128State decimalState, LongState2 counterState, LongState2 overflowState, Block block, int position, long groupId)
     {
-        long[] decimal = decimalState.getArray();
-        int decimalOffset = decimalState.getArrayOffset();
+        long[] decimal = decimalState.getArray((int) groupId);
+        int decimalOffset = decimalState.getArrayOffset((int) groupId);
 
-        counterState.setValue(counterState.getValue() + 1);
-        decimalState.setNotNull(true);
+        counterState.setValue((int) groupId, counterState.getValue((int) groupId) + 1);
+        decimalState.setNotNull((int) groupId, true);
 
         long rightHigh = block.getLong(position, 0);
         long rightLow = block.getLong(position, SIZE_OF_LONG);
@@ -172,17 +175,16 @@ public class DecimalAverageAggregation
                 rightHigh,
                 rightLow,
                 decimal,
-                decimalOffset) + overflowState.getValue();
-        overflowState.setNull(overflow == 0);
-        overflowState.setValue(overflow);
+                decimalOffset) + overflowState.getValue((int) groupId);
+        overflowState.setValue((int) groupId, overflow);
     }
 
-    public static void combine(Int128State decimalState, LongState counterState, NullableLongState overflowState, Int128State otherDecimalState, LongState otherCounterState, NullableLongState otherOverflowState)
+    public static void combine(Int128State decimalState, LongState2 counterState, LongState2 overflowState, Int128State otherDecimalState, LongState2 otherCounterState, LongState2 otherOverflowState, long groupId)
     {
-        long[] decimal = decimalState.getArray();
-        int decimalOffset = decimalState.getArrayOffset();
-        long[] otherDecimal = otherDecimalState.getArray();
-        int otherDecimalOffset = otherDecimalState.getArrayOffset();
+        long[] decimal = decimalState.getArray((int) groupId);
+        int decimalOffset = decimalState.getArrayOffset((int) groupId);
+        long[] otherDecimal = otherDecimalState.getArray((int) groupId);
+        int otherDecimalOffset = otherDecimalState.getArrayOffset((int) groupId);
 
         // zalozenie, ze LHS nawet jak jest null to jest ok (decimal i overflow)
         long overflow = addWithOverflow(
@@ -192,11 +194,10 @@ public class DecimalAverageAggregation
                 otherDecimal[otherDecimalOffset + 1],
                 decimal,
                 decimalOffset);
-        decimalState.setNotNull(true);
-        counterState.setValue(counterState.getValue() + otherCounterState.getValue());
-        overflow += overflowState.getValue() + otherOverflowState.getValue() * (otherOverflowState.isNull() ? 0 : 1);
-        overflowState.setValue(overflow);
-        overflowState.setNull(overflow == 0);
+        decimalState.setNotNull((int) groupId, true);
+        counterState.setValue((int) groupId, counterState.getValue((int) groupId) + otherCounterState.getValue((int) groupId));
+        overflow += overflowState.getValue((int)groupId) + otherOverflowState.getValue((int) groupId);
+        overflowState.setValue((int) groupId, overflow);
     }
 
     public static boolean isNull(Int128State decimalState)
@@ -204,7 +205,7 @@ public class DecimalAverageAggregation
         return !decimalState.isNotNull();
     }
 
-    public static void outputShortDecimal(DecimalType type, Int128State decimalState, LongState counterState, NullableLongState overflowState, BlockBuilder out)
+    public static void outputShortDecimal(DecimalType type, Int128State decimalState, LongState2 counterState, LongState2 overflowState, BlockBuilder out)
     {
         if (counterState.getValue() == 0) {
             out.appendNull();
@@ -214,7 +215,7 @@ public class DecimalAverageAggregation
         }
     }
 
-    public static void outputLongDecimal(DecimalType type, Int128State decimalState, LongState counterState, NullableLongState overflowState, BlockBuilder out)
+    public static void outputLongDecimal(DecimalType type, Int128State decimalState, LongState2 counterState, LongState2 overflowState, BlockBuilder out)
     {
         if (counterState.getValue() == 0) {
             out.appendNull();
@@ -225,7 +226,7 @@ public class DecimalAverageAggregation
     }
 
     @VisibleForTesting
-    public static Int128 average(Int128State decimalState, LongState counterState, NullableLongState overflowState, DecimalType type)
+    public static Int128 average(Int128State decimalState, LongState2 counterState, LongState2 overflowState, DecimalType type)
     {
         long[] decimal = decimalState.getArray();
         int decimalOffset = decimalState.getArrayOffset();

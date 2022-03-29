@@ -179,6 +179,7 @@ public final class AccumulatorCompiler
                 lambdaProviderFields,
                 metadata.getInputFunction(),
                 callSiteBinder,
+                metadata.getIsNullFunction(),
                 grouped);
         generateGetEstimatedSize(definition, stateFields);
 
@@ -343,6 +344,7 @@ public final class AccumulatorCompiler
             List<FieldDefinition> lambdaProviderFields,
             MethodHandle inputFunction,
             CallSiteBinder callSiteBinder,
+            Optional<MethodHandle> isNullFunction,
             boolean grouped)
     {
         ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
@@ -384,6 +386,7 @@ public final class AccumulatorCompiler
                 lambdaProviderFields,
                 masksBlock,
                 callSiteBinder,
+                isNullFunction,
                 grouped);
 
         body.append(block);
@@ -498,6 +501,7 @@ public final class AccumulatorCompiler
             List<FieldDefinition> lambdaProviderFields,
             Variable masksBlock,
             CallSiteBinder callSiteBinder,
+            Optional<MethodHandle> isNullFunction,
             boolean grouped)
     {
         // For-loop over rows
@@ -518,6 +522,7 @@ public final class AccumulatorCompiler
                 lambdaProviderFields,
                 inputFunction,
                 callSiteBinder,
+                isNullFunction,
                 grouped);
 
         //  Wrap with null checks
@@ -567,11 +572,11 @@ public final class AccumulatorCompiler
             List<FieldDefinition> lambdaProviderFields,
             MethodHandle inputFunction,
             CallSiteBinder callSiteBinder,
-            boolean grouped)
+            Optional<MethodHandle> isNullFunction, boolean grouped)
     {
         BytecodeBlock block = new BytecodeBlock();
 
-        if (grouped) {
+        if (grouped && isNullFunction.isEmpty()) {
             generateSetGroupIdFromGroupIdsBlock(scope, stateField, block);
         }
 
@@ -590,6 +595,13 @@ public final class AccumulatorCompiler
         // position parameter
         if (!parameterVariables.isEmpty()) {
             parameters.add(position);
+        }
+
+        if (isNullFunction.isPresent() && grouped) {
+            Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
+            parameters.add(groupIdsBlock.invoke("getGroupId", long.class, position));
+        } else {
+            parameters.add(constantLong(0));
         }
 
         // lambda parameters
@@ -712,7 +724,7 @@ public final class AccumulatorCompiler
             loopBody.append(positionX.set(position));
         }
         for (FieldDefinition stateField : stateFields) {
-            if (grouped) {
+            if (grouped && isNullFunction.isPresent()) {
                 Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
                 loopBody.append(thisVariable.getField(stateField).invoke("setGroupId", void.class, groupIdsBlock.invoke("getGroupId", long.class, position)));
             }
@@ -727,6 +739,12 @@ public final class AccumulatorCompiler
         for (FieldDefinition lambdaProviderField : lambdaProviderFields) {
             loopBody.append(scope.getThis().getField(lambdaProviderField)
                     .invoke("get", Object.class));
+        }
+        if(grouped && isNullFunction.isPresent()) {
+            Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
+            loopBody.append(groupIdsBlock.invoke("getGroupId", long.class, position));
+        } else {
+            loopBody.append(constantLong(0));
         }
         loopBody.append(invoke(callSiteBinder.bind(combineFunction.get()), "combine"));
 

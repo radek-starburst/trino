@@ -37,6 +37,9 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.profile.AsyncProfiler;
 import org.openjdk.jmh.profile.DTraceAsmProfiler;
+import org.openjdk.jmh.profile.LinuxPerfAsmProfiler;
+import org.openjdk.jmh.profile.LinuxPerfNormProfiler;
+import org.openjdk.jmh.profile.LinuxPerfProfiler;
 import org.testng.annotations.Test;
 
 import java.io.File;
@@ -48,6 +51,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
+import static io.trino.jmh.Benchmarks.benchmark;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.DecimalType.createDecimalType;
 import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
@@ -109,7 +113,7 @@ public class BenchmarkDecimalAggregation
         @Param({"avg"})
         private String function = "avg";
 
-        @Param({"10000"})
+        @Param({"1000"})
         private int groupCount = 10;
 
         private AggregatorFactory partialAggregatorFactory;
@@ -221,12 +225,58 @@ public class BenchmarkDecimalAggregation
     public static void main(String[] args)
             throws Exception
     {
-        // ensure the benchmarks are valid before running
-//        new BenchmarkDecimalAggregation().verify();
-        Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
-                .withOptions(options ->
-                options
-                .output(System.getProperty("outputDirectory")))
-                .run();
+
+        String profilerOutputDir = null;
+
+        try {
+            String jmhDir = "jmh";
+            new File(jmhDir).mkdirs();
+            String outDir = jmhDir + "/";
+            String end = String.valueOf(Files.list(Paths.get(jmhDir))
+                    .map(path -> path.getFileName().toString())
+                    .filter(path -> path.matches("\\d+"))
+                    .map(path -> Integer.parseInt(path) + 1)
+                    .sorted(Comparator.reverseOrder())
+                    .findFirst().orElse(0));
+            outDir = outDir + System.getProperty("outputDirectory", end);
+            new File(outDir).mkdirs();
+            profilerOutputDir = outDir;
+        }
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        String finalProfilerOutputDir = profilerOutputDir;
+
+        if(System.getProperty("os.name").equals("Linux")) {
+            benchmark(BenchmarkDecimalAggregation.class)
+                    .withOptions(options ->
+                            options
+                                    .include("benchmarkAddInput")
+                                    .addProfiler(LinuxPerfProfiler.class)
+                                    .addProfiler(LinuxPerfNormProfiler.class)
+                                    .addProfiler(LinuxPerfAsmProfiler.class)
+                                    .output(System.getProperty("outputDirectory"))
+                                    .output(String.format("%s/%s", finalProfilerOutputDir, "stdout.log"))
+                                    .jvmArgsAppend(
+                                            "-XX:+UnlockDiagnosticVMOptions",
+                                            "-XX:+PrintAssembly",
+                                            "-XX:+LogCompilation",
+                                            "-XX:+TraceClassLoading"))
+                    .run();
+        } else {
+            benchmark(BenchmarkDecimalAggregation.class)
+                    .withOptions(options -> options
+                            .jvmArgs("-Xmx32g")
+                            .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", finalProfilerOutputDir))
+                            //L1-dcache-loads,L1-dcache-load-misses,LLC-loads,branches
+                            .addProfiler(DTraceAsmProfiler.class, String.format("event=branch-misses;hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", finalProfilerOutputDir))
+                            .output(String.format("%s/%s", finalProfilerOutputDir, "stdout.log"))
+                            .jvmArgsAppend(
+                                    "-XX:+UnlockDiagnosticVMOptions",
+                                    "-XX:+PrintAssembly",
+                                    "-XX:+LogCompilation",
+                                    "-XX:+TraceClassLoading"))
+                    .run();
+        }
     }
 }

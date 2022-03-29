@@ -16,31 +16,19 @@ package io.trino.operator.aggregation.state;
 import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateMetadata;
 
-@AccumulatorStateMetadata(stateFactoryClass = Int128StateFactory.class, stateSerializerClass = Int128StateSerializer.class)
-public interface Int128State
+@AccumulatorStateMetadata(stateFactoryClass = LongState2Factory.class, stateSerializerClass = LongState2Serializer.class)
+public interface LongState2
         extends AccumulatorState
 {
-    boolean isNotNull();
+    long getValue();
 
-    void setNotNull(boolean notNull);
+    void setValue(long value);
 
-    long[] getArray();
-
-    int getArrayOffset();
-
-    default boolean isNotNull(int groupId) {
+    default long getValue(int groupId) {
         throw new UnsupportedOperationException();
     }
 
-    default void setNotNull(int groupId, boolean notNull) {
-        throw new UnsupportedOperationException();
-    }
-
-    default long[] getArray(int groupId) {
-        throw new UnsupportedOperationException();
-    }
-
-    default int getArrayOffset(int groupId) {
+    default void setValue(int groupId, long value) {
         throw new UnsupportedOperationException();
     }
 }

@@ -68,12 +68,6 @@ public class Int128StateFactory
         }
 
         @Override
-        public void addNotNull(boolean isNotNull)
-        {
-            this.isNotNull.set(getGroupId(), isNotNull | this.isNotNull.get(getGroupId()));
-        }
-
-        @Override
         public long[] getArray()
         {
             return unscaledDecimals.getSegment(getGroupId() * 2);
@@ -83,6 +77,30 @@ public class Int128StateFactory
         public int getArrayOffset()
         {
             return unscaledDecimals.getOffset(getGroupId() * 2);
+        }
+
+        @Override
+        public boolean isNotNull(int groupId)
+        {
+            return isNotNull.get(groupId);
+        }
+
+        @Override
+        public void setNotNull(int groupId, boolean notNull)
+        {
+            isNotNull.set(groupId, notNull);
+        }
+
+        @Override
+        public long[] getArray(int groupId)
+        {
+            return unscaledDecimals.getSegment(groupId * 2);
+        }
+
+        @Override
+        public int getArrayOffset(int groupId)
+        {
+            return unscaledDecimals.getOffset(groupId * 2);
         }
 
         @Override
@@ -120,12 +138,6 @@ public class Int128StateFactory
         public void setNotNull(boolean notNull)
         {
             isNotNull = notNull;
-        }
-
-        @Override
-        public void addNotNull(boolean isNotNull)
-        {
-            this.isNotNull |= isNotNull;
         }
 
         @Override
