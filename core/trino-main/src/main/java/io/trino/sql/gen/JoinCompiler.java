@@ -48,6 +48,7 @@ import io.trino.spi.type.BigintType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeOperators;
 import io.trino.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
+import io.trino.util.CompilerUtils;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import org.openjdk.jol.info.ClassLayout;
 import org.weakref.jmx.Managed;
@@ -231,6 +232,7 @@ public class JoinCompiler
         generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
         generatePositionNotDistinctFromRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
         generatePositionNotDistinctFromRowWithPageMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
+        generateBatchedPositionNotDistinctFromRowWithPageMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
         generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true);
         generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
         generatePositionNotDistinctFromPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
@@ -737,6 +739,92 @@ public class JoinCompiler
                     .ifTrue(constantFalse().ret()));
         }
         body.append(constantTrue().ret());
+    }
+
+    private void generateBatchedPositionNotDistinctFromRowWithPageMethod(
+            ClassDefinition classDefinition,
+            CallSiteBinder callSiteBinder,
+            List<Type> joinChannelTypes,
+            List<FieldDefinition> joinChannelFields)
+    {
+        Parameter leftBlockIndex = arg("leftBlockPosition", long[].class);
+        Parameter batchedGroupIdOffset = arg("batchedGroupIdOffset", int.class);
+        Parameter pageOffset = arg("pageOffset", int.class);
+        Parameter page = arg("page", Page.class);
+        Parameter rightChannels = arg("rightChannels", int[].class);
+        Parameter batchSize = arg("batchSize", int.class);
+
+        MethodDefinition batchedPositionNotDistinctFromRow = classDefinition.declareMethod(
+                a(PUBLIC),
+                "batchedPositionNotDistinctFromRow",
+                type(void.class),
+                leftBlockIndex,
+                batchedGroupIdOffset,
+                pageOffset,
+                page,
+                rightChannels,
+                batchSize);
+
+        Variable thisVariable = batchedPositionNotDistinctFromRow.getThis();
+        Scope scope = batchedPositionNotDistinctFromRow.getScope();
+        BytecodeBlock body = batchedPositionNotDistinctFromRow.getBody();
+        Variable isEqual = scope.declareVariable(boolean.class, "isEqual");
+        Variable c = scope.declareVariable(boolean.class, "c");
+        Variable batchIterator = scope.declareVariable(int.class, "batchIterator");
+        Variable r = scope.declareVariable(int.class, "r");
+
+        for (int index = 0; index < joinChannelTypes.size(); index++) {
+            BytecodeBlock ifBody = new BytecodeBlock();
+            BytecodeExpression leftBlock = thisVariable
+                    .getField(joinChannelFields.get(index))
+                    .invoke("get", Object.class, constantInt(0))
+                    .cast(Block.class);
+            BytecodeExpression rightBlock = page.invoke("getBlock", Block.class, rightChannels.getElement(index));
+            Type type = joinChannelTypes.get(index);
+
+            BytecodeExpression vc = isEqual.set(
+                    BytecodeExpressions.not(
+                            BytecodeExpressions.inlineIf(
+                                BytecodeExpressions.or(
+                                        leftBlock.invoke("isNull", boolean.class, leftBlockIndex.getElement(BytecodeExpressions.add(batchedGroupIdOffset, batchIterator)).cast(int.class)),
+                                        rightBlock.invoke("isNull", boolean.class, r)
+                                ),
+                                BytecodeExpressions.not(
+                                        BytecodeExpressions.and(
+                                            leftBlock.invoke("isNull", boolean.class, leftBlockIndex.getElement(BytecodeExpressions.add(batchedGroupIdOffset, batchIterator)).cast(int.class)),
+                                            rightBlock.invoke("isNull", boolean.class, r)
+                                        )
+                                ),
+                                typeDistinctFromIgnoreNulls(callSiteBinder, type, leftBlock, leftBlockIndex.getElement(BytecodeExpressions.add(batchedGroupIdOffset, batchIterator)).cast(int.class), rightBlock, r)
+                            )
+            ));
+            ifBody
+                    .append(r.set(BytecodeExpressions.add(pageOffset, batchIterator)))
+                    .append(vc)
+                    .append(
+                            leftBlockIndex.setElement(BytecodeExpressions.add(batchedGroupIdOffset, batchIterator), BytecodeExpressions.inlineIf(isEqual, leftBlockIndex.getElement(BytecodeExpressions.add(batchedGroupIdOffset, batchIterator)), constantLong(-1)))
+                    );
+            // LOOP BODY
+            BytecodeBlock loopBody = new BytecodeBlock();
+            loopBody.append(new IfStatement()
+                    .condition(BytecodeExpressions.notEqual(
+                            leftBlockIndex.getElement(BytecodeExpressions.add(batchIterator, batchedGroupIdOffset)),
+                            constantLong(-1)))
+                    .ifTrue(ifBody));
+//             LOOP BODY
+
+            ForLoop forLoop = new ForLoop()
+                    .initialize(new BytecodeBlock().append(batchIterator.set(constantInt(0))))
+                    .condition(new BytecodeBlock()
+                            .getVariable(batchIterator)
+                            .getVariable(batchSize)
+                            .invokeStatic(CompilerOperations.class, "lessThan", boolean.class, int.class, int.class))
+                    .update(new BytecodeBlock().incrementVariable(batchIterator, (byte) 1))
+                    .body(loopBody);
+
+            body.append(forLoop);
+        }
+        body.ret();
     }
 
     private BytecodeNode typeDistinctFrom(

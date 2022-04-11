@@ -125,4 +125,8 @@ public interface PagesHashStrategy
      * Checks if sort channel is null at the specified position
      */
     boolean isSortChannelPositionNull(int blockIndex, int blockPosition);
+
+    default void batchedPositionNotDistinctFromRow(long[] leftBlockIndex, int batchedGroupIdOffset, int pageOffset, Page page, int[] rightChannels, int batchSize) {
+        throw new UnsupportedOperationException();
+    }
 }
