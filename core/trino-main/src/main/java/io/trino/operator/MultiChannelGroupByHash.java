@@ -194,9 +194,9 @@ public class MultiChannelGroupByHash
     }
 
     @Override
-    public void appendValuesTo(int groupId, PageBuilder pageBuilder, int outputChannelOffset)
+    public void appendValuesTo(int groupId, PageBuilder pageBuilder)
     {
-        hashStrategy.appendTo(0, groupId, pageBuilder, outputChannelOffset);
+        hashStrategy.appendTo(0, groupId, pageBuilder, 0);
     }
 
     @Override
@@ -806,17 +806,13 @@ public class MultiChannelGroupByHash
             }
         }
 
-        for (int i = 0; i < batchSize; i++) {
-            if (batchedGroupIds[batchedGroupIdOffset + i] != -1) {
-                boolean match = hashStrategy.positionNotDistinctFromRow(
-                        0,
-                        (int) batchedGroupIds[batchedGroupIdOffset + i],
-                        pageOffset + i,
-                        page,
-                        channels);
-                batchedGroupIds[batchedGroupIdOffset + i] = (batchedGroupIds[batchedGroupIdOffset + i] + 1) * (match ? 1 : 0) - 1;
-            }
-        }
+        hashStrategy.batchedPositionNotDistinctFromRow(
+                batchedGroupIds,
+                batchedGroupIdOffset,
+                pageOffset,
+                page,
+                channels,
+                batchSize);
 
         for (int i = 0; i < batchSize; i++) {
             if (batchedGroupIds[batchedGroupIdOffset + i] == -1) {
