@@ -714,7 +714,7 @@ public final class HiveSessionProperties
 
     public static int getPartitionStatisticsSampleSize(ConnectorSession session)
     {
-        int size = Integer.MAX_VALUE;
+        int size = session.getProperty(PARTITION_STATISTICS_SAMPLE_SIZE, Integer.class);
         if (size < 1) {
             throw new TrinoException(INVALID_SESSION_PROPERTY, format("%s must be greater than 0: %s", PARTITION_STATISTICS_SAMPLE_SIZE, size));
         }
