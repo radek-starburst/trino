@@ -60,6 +60,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -133,6 +134,15 @@ public class MetastoreHiveStatisticsProvider
             Map<String, Type> columnTypes,
             List<HivePartition> partitions)
     {
+        SchemaTableName notPartitioned = new SchemaTableName(
+                Optional.of(partitions.get(0)).map(it -> it.getTableName().getSchemaName().replace("_part", "")).orElse(""),
+                Optional.of(partitions.get(0)).map(it -> it.getTableName().getTableName().replace("_part", "")).orElse("")
+        );
+        table = notPartitioned;
+        partitions = partitions.stream()
+                .map(x -> new HivePartition(notPartitioned))
+                .collect(Collectors.toList());
+        partitions = partitions.subList(0, 1);
         if (!isStatisticsEnabled(session)) {
             return TableStatistics.empty();
         }
