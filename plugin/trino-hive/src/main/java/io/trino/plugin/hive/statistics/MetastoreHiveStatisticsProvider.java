@@ -138,6 +138,7 @@ public class MetastoreHiveStatisticsProvider
                 Optional.of(partitions.get(0)).map(it -> it.getTableName().getSchemaName().replace("_part", "")).orElse(""),
                 Optional.of(partitions.get(0)).map(it -> it.getTableName().getTableName().replace("_part", "")).orElse("")
         );
+        table = notPartitioned;
         partitions = partitions.stream()
                 .map(x -> new HivePartition(notPartitioned))
                 .collect(Collectors.toList());
