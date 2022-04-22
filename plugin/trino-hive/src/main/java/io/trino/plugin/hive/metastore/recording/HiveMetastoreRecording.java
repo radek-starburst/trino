@@ -155,9 +155,9 @@ public class HiveMetastoreRecording
 
     public List<String> getAllDatabases(Supplier<List<String>> valueSupplier)
     {
-        if (replay) {
-            return allDatabases.orElseThrow(() -> new TrinoException(NOT_FOUND, "Missing entry for all databases"));
-        }
+//        if (replay) {
+//            return allDatabases.orElseThrow(() -> new TrinoException(NOT_FOUND, "Missing entry for all databases"));
+//        }
 
         List<String> result = valueSupplier.get();
         allDatabases = Optional.of(result);

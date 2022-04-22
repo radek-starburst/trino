@@ -11,10 +11,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.spi.type;
+package io.trino.plugin.hive.metastore;
 
 import io.trino.spi.block.Block;
 import io.trino.spi.connector.ConnectorSession;
+import io.trino.spi.type.AbstractLongType;
+import io.trino.spi.type.TypeSignature;
 
 public class TestingIdType
         extends AbstractLongType
