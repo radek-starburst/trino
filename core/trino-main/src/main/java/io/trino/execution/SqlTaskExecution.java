@@ -1076,6 +1076,7 @@ public class SqlTaskExecution
         public ListenableFuture<Void> processFor(Duration duration)
         {
             Driver driver;
+            // potencjalne contention?
             synchronized (this) {
                 // if close() was called before we get here, there's not point in even creating the driver
                 if (closed) {

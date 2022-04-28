@@ -41,7 +41,7 @@ class ChildAggregatedMemoryContext
     }
 
     @Override
-    synchronized boolean tryUpdateBytes(String allocationTag, long delta)
+    boolean tryUpdateBytes(String allocationTag, long delta)
     {
         if (parentMemoryContext.tryUpdateBytes(allocationTag, delta)) {
             addBytes(delta);
