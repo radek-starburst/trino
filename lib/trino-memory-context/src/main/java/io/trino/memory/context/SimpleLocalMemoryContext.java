@@ -47,13 +47,13 @@ public final class SimpleLocalMemoryContext
     }
 
     @Override
-    public synchronized long getBytes()
+    public long getBytes()
     {
         return usedBytes;
     }
 
     @Override
-    public synchronized ListenableFuture<Void> setBytes(long bytes)
+    public ListenableFuture<Void> setBytes(long bytes)
     {
         checkState(!closed, "SimpleLocalMemoryContext is already closed");
         checkArgument(bytes >= 0, "bytes cannot be negative");
@@ -69,7 +69,7 @@ public final class SimpleLocalMemoryContext
     }
 
     @Override
-    public synchronized boolean trySetBytes(long bytes)
+    public boolean trySetBytes(long bytes)
     {
         checkState(!closed, "SimpleLocalMemoryContext is already closed");
         checkArgument(bytes >= 0, "bytes cannot be negative");
@@ -82,7 +82,7 @@ public final class SimpleLocalMemoryContext
     }
 
     @Override
-    public synchronized void close()
+    public void close()
     {
         if (closed) {
             return;
@@ -93,7 +93,7 @@ public final class SimpleLocalMemoryContext
     }
 
     @Override
-    public synchronized String toString()
+    public String toString()
     {
         return toStringHelper(this)
                 .add("allocationTag", allocationTag)
