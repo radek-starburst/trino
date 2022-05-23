@@ -38,11 +38,11 @@ public class LongDecimalWithOverflowAndLongStateSerializer
     public void serialize(LongDecimalWithOverflowAndLongState state, BlockBuilder out)
     {
         if (state.isNotNull()) {
-            long count = state.getLong();
+            double count = state.getDouble();
             long overflow = state.getOverflow();
             long[] decimal = state.getDecimalArray();
             int offset = state.getDecimalArrayOffset();
-            VARBINARY.writeSlice(out, Slices.wrappedLongArray(count, overflow, decimal[offset], decimal[offset + 1]));
+            VARBINARY.writeSlice(out, Slices.wrappedLongArray((long) count, overflow, decimal[offset], decimal[offset + 1]));
         }
         else {
             out.appendNull();
@@ -61,7 +61,7 @@ public class LongDecimalWithOverflowAndLongStateSerializer
             long count = slice.getLong(0);
             long overflow = slice.getLong(Long.BYTES);
 
-            state.setLong(count);
+            state.setDouble(count);
             state.setOverflow(overflow);
             state.setNotNull();
             long[] decimal = state.getDecimalArray();

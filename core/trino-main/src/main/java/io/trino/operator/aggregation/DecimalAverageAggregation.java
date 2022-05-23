@@ -115,7 +115,7 @@ public class DecimalAverageAggregation
 
     public static void inputShortDecimal(LongDecimalWithOverflowAndLongState state, Block block, int position)
     {
-        state.addLong(1); // row counter
+        state.addDouble(1); // row counter
 
         state.setNotNull();
 
@@ -138,7 +138,7 @@ public class DecimalAverageAggregation
 
     public static void inputLongDecimal(LongDecimalWithOverflowAndLongState state, Block block, int position)
     {
-        state.addLong(1); // row counter
+        state.addDouble(1); // row counter
 
         state.setNotNull();
 
@@ -161,7 +161,7 @@ public class DecimalAverageAggregation
 
     public static void combine(LongDecimalWithOverflowAndLongState state, LongDecimalWithOverflowAndLongState otherState)
     {
-        state.addLong(otherState.getLong()); // row counter
+        state.addDouble(otherState.getDouble()); // row counter
 
         long[] decimal = state.getDecimalArray();
         int offset = state.getDecimalArrayOffset();
@@ -189,7 +189,7 @@ public class DecimalAverageAggregation
 
     public static void outputShortDecimal(DecimalType type, LongDecimalWithOverflowAndLongState state, BlockBuilder out)
     {
-        if (state.getLong() == 0) {
+        if (state.getDouble() == 0) {
             out.appendNull();
         }
         else {
@@ -199,7 +199,7 @@ public class DecimalAverageAggregation
 
     public static void outputLongDecimal(DecimalType type, LongDecimalWithOverflowAndLongState state, BlockBuilder out)
     {
-        if (state.getLong() == 0) {
+        if (state.getDouble() == 0) {
             out.appendNull();
         }
         else {
@@ -218,11 +218,11 @@ public class DecimalAverageAggregation
             BigDecimal sum = new BigDecimal(Int128.valueOf(decimal[offset], decimal[offset + 1]).toBigInteger(), type.getScale());
             sum = sum.add(new BigDecimal(OVERFLOW_MULTIPLIER.multiply(BigInteger.valueOf(overflow))));
 
-            BigDecimal count = BigDecimal.valueOf(state.getLong());
+            BigDecimal count = BigDecimal.valueOf(state.getDouble());
             return Decimals.encodeScaledValue(sum.divide(count, type.getScale(), ROUND_HALF_UP), type.getScale());
         }
 
-        Int128 result = divideRoundUp(decimal[offset], decimal[offset + 1], 0, 0, state.getLong(), 0);
+        Int128 result = divideRoundUp(decimal[offset], decimal[offset + 1], 0, 0, (long) state.getDouble(), 0);
         if (overflows(result)) {
             throw new ArithmeticException("Decimal overflow");
         }

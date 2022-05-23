@@ -35,12 +35,21 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.profile.AsyncProfiler;
+import org.openjdk.jmh.profile.DTraceAsmProfiler;
+import org.openjdk.jmh.runner.options.ChainedOptionsBuilder;
 import org.openjdk.jmh.runner.options.WarmupMode;
+import org.testcontainers.shaded.org.apache.commons.io.IOUtils;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.OptionalInt;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.DecimalType.createDecimalType;
@@ -52,13 +61,13 @@ import static org.testng.Assert.assertEquals;
 
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@Fork(3)
-@Warmup(iterations = 10)
-@Measurement(iterations = 10)
+@Fork(1)
+@Warmup(iterations = 4)
+@Measurement(iterations = 8)
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkDecimalAggregation
 {
-    private static final int ELEMENT_COUNT = 1_000_000;
+    private static final int ELEMENT_COUNT = 1_000_000_00;
 
     @Benchmark
     @OperationsPerInvocation(ELEMENT_COUNT)
@@ -99,13 +108,13 @@ public class BenchmarkDecimalAggregation
     @State(Scope.Thread)
     public static class BenchmarkData
     {
-        @Param({"SHORT", "LONG"})
+        @Param({"LONG"})
         private String type = "SHORT";
 
-        @Param({"avg", "sum"})
+        @Param({"avg"})
         private String function = "avg";
 
-        @Param({"10", "1000"})
+        @Param({"1000"})
         private int groupCount = 10;
 
         private AggregatorFactory partialAggregatorFactory;
@@ -215,7 +224,36 @@ public class BenchmarkDecimalAggregation
     {
         // ensure the benchmarks are valid before running
         new BenchmarkDecimalAggregation().verify();
+        String system = System.getProperty("os.name");
 
-        Benchmarks.benchmark(BenchmarkDecimalAggregation.class, WarmupMode.BULK).run();
+        ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "--abbrev-ref HEAD");
+        String outputDir = String.format(
+                "jmh/%s_x_%s", IOUtils.toString(pb.start().getInputStream(), StandardCharsets.UTF_8).replace("/", "_"), LocalDateTime.now());
+        new File(outputDir).mkdirs();
+
+        Function<ChainedOptionsBuilder, ChainedOptionsBuilder> baseOptionsBuilderConsumer = (options) ->
+                options
+                        .output(Path.of(outputDir, "stdout.log").toString())
+                        .jvmArgsAppend(
+                                "-Xmx32g",
+                                "-XX:+UnlockDiagnosticVMOptions",
+                                "-XX:+PrintAssembly",
+                                "-XX:+LogCompilation",
+                                "-XX:+TraceClassLoading");
+        Function<ChainedOptionsBuilder, ChainedOptionsBuilder> profilers = system.equals("Linux")
+                ? (options) ->
+                options
+                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", outputDir))
+                :  (options) ->
+                options
+                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", outputDir))
+                        .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
+
+        Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
+                .includeMethod("benchmark")
+                .withOptions(optionsBuilder ->
+                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
+                                .build())
+                .run();
     }
 }

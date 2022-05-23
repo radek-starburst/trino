@@ -19,9 +19,9 @@ import io.trino.spi.function.AccumulatorStateMetadata;
 public interface LongDecimalWithOverflowAndLongState
         extends LongDecimalWithOverflowState
 {
-    long getLong();
+    double getDouble();
 
-    void setLong(long value);
+    void setDouble(double value);
 
-    void addLong(long value);
+    void addDouble(double value);
 }

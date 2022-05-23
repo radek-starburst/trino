@@ -13,6 +13,7 @@
  */
 package io.trino.operator.aggregation.state;
 
+import io.trino.array.DoubleBigArray;
 import io.trino.array.LongBigArray;
 import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateFactory;
@@ -38,31 +39,31 @@ public class LongDecimalWithOverflowAndLongStateFactory
             implements LongDecimalWithOverflowAndLongState
     {
         private static final int INSTANCE_SIZE = ClassLayout.parseClass(GroupedLongDecimalWithOverflowAndLongState.class).instanceSize();
-        private final LongBigArray longs = new LongBigArray();
+        private final DoubleBigArray doubles = new DoubleBigArray();
 
         @Override
         public void ensureCapacity(long size)
         {
-            longs.ensureCapacity(size);
+            doubles.ensureCapacity(size);
             super.ensureCapacity(size);
         }
 
         @Override
-        public long getLong()
+        public double getDouble()
         {
-            return longs.get(getGroupId());
+            return doubles.get(getGroupId());
         }
 
         @Override
-        public void setLong(long value)
+        public void setDouble(double value)
         {
-            longs.set(getGroupId(), value);
+            doubles.set(getGroupId(), value);
         }
 
         @Override
-        public void addLong(long value)
+        public void addDouble(double value)
         {
-            longs.add(getGroupId(), value);
+            doubles.add(getGroupId(), value);
         }
 
         @Override
@@ -78,32 +79,32 @@ public class LongDecimalWithOverflowAndLongStateFactory
     {
         private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleLongDecimalWithOverflowAndLongState.class).instanceSize();
 
-        protected long longValue;
+        protected double doubleValue;
 
         public SingleLongDecimalWithOverflowAndLongState() {}
 
         // for copying
-        private SingleLongDecimalWithOverflowAndLongState(long longValue)
+        private SingleLongDecimalWithOverflowAndLongState(double longValue)
         {
-            this.longValue = longValue;
+            this.doubleValue = longValue;
         }
 
         @Override
-        public long getLong()
+        public double getDouble()
         {
-            return longValue;
+            return doubleValue;
         }
 
         @Override
-        public void setLong(long longValue)
+        public void setDouble(double longValue)
         {
-            this.longValue = longValue;
+            this.doubleValue = longValue;
         }
 
         @Override
-        public void addLong(long value)
+        public void addDouble(double value)
         {
-            longValue += value;
+            doubleValue += value;
         }
 
         @Override
@@ -115,7 +116,7 @@ public class LongDecimalWithOverflowAndLongStateFactory
         @Override
         public AccumulatorState copy()
         {
-            return new SingleLongDecimalWithOverflowAndLongState(longValue);
+            return new SingleLongDecimalWithOverflowAndLongState(doubleValue);
         }
     }
 }
