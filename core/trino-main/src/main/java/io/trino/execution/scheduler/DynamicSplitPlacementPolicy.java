@@ -36,9 +36,9 @@ public class DynamicSplitPlacementPolicy
     }
 
     @Override
-    public SplitPlacementResult computeAssignments(Set<Split> splits)
+    public SplitPlacementResult computeAssignments(Set<Split> splits, int stageId)
     {
-        return nodeSelector.computeAssignments(splits, remoteTasks.get());
+        return nodeSelector.computeAssignments(splits, remoteTasks.get(), stageId);
     }
 
     @Override

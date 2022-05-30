@@ -19,6 +19,7 @@ import com.google.common.io.Closer;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.log.Logger;
+import io.airlift.units.DataSize;
 import io.trino.execution.Lifespan;
 import io.trino.memory.context.LocalMemoryContext;
 import io.trino.operator.DriverContext;
@@ -362,7 +363,6 @@ public class HashBuilderOperator
     private void updateIndex(Page page)
     {
         index.addPage(page);
-
         if (spillEnabled) {
             localRevocableMemoryContext.setBytes(index.getEstimatedSize().toBytes());
         }

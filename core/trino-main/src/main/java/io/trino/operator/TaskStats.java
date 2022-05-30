@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
+import io.trino.memory.context.RootAggregatedMemoryContext;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;

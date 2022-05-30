@@ -101,7 +101,7 @@ public class BenchmarkNodeScheduler
         Iterator<Split> splits = data.getSplits().iterator();
         Set<Split> batch = new HashSet<>();
         while (splits.hasNext() || !batch.isEmpty()) {
-            Multimap<InternalNode, Split> assignments = data.getNodeSelector().computeAssignments(batch, remoteTasks).getAssignments();
+            Multimap<InternalNode, Split> assignments = data.getNodeSelector().computeAssignments(batch, remoteTasks, 0).getAssignments();
             for (InternalNode node : assignments.keySet()) {
                 MockRemoteTaskFactory.MockRemoteTask remoteTask = data.getTaskMap().get(node);
                 remoteTask.addSplits(ImmutableMultimap.<PlanNodeId, Split>builder()

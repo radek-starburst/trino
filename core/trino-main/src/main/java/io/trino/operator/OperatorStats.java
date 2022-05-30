@@ -527,6 +527,10 @@ public class OperatorStats
 
             peakUserMemory = max(peakUserMemory, operator.getPeakUserMemoryReservation().toBytes());
             peakRevocableMemory = max(peakRevocableMemory, operator.getPeakRevocableMemoryReservation().toBytes());
+            if(operator.getPeakTotalMemoryReservation().toBytes() / (1024 * 1024) > 0) {
+//                System.out.println(String.format("OperatorStats_getPeakTotalMemoryReservation:: %s ---> %d MB", operator.getOperatorType(), (operator.getPeakTotalMemoryReservation().toBytes()) / (1024 * 1024)));
+            }
+
             peakTotalMemory = max(peakTotalMemory, operator.getPeakTotalMemoryReservation().toBytes());
 
             spilledDataSize += operator.getSpilledDataSize().toBytes();

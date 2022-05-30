@@ -40,6 +40,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -722,8 +723,16 @@ public class WorkProcessorPipelineSourceOperator
             peakUserMemoryReservation.accumulateAndGet(userMemory, Math::max);
             peakRevocableMemoryReservation.accumulateAndGet(revocableMemory, Math::max);
             peakTotalMemoryReservation.accumulateAndGet(totalMemory, Math::max);
+
+            c.putIfAbsent(operatorType, new AtomicLong());
+            long oldValue = c.get(operatorType).getAndAccumulate(totalMemory, Math::max);
+            if (totalMemory > oldValue && operatorType.equals("HashBuilderOperator")) {
+//                System.out.println(String.format("Pipeline::operatorType=%s peakTotalMemoryReservation = %d", operatorType, totalMemory));
+//            Thread.dumpStack();
+//            c.forEach((k, v) -> System.out.println(String.format("%s -> %d", k, v.get())));
+            }
         }
-    }
+    }    public static ConcurrentHashMap<String, AtomicLong> c = new ConcurrentHashMap<>();
 
     public static class WorkProcessorPipelineSourceOperatorFactory
             implements SourceOperatorFactory

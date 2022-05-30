@@ -529,7 +529,6 @@ public class TaskContext
         }
 
         boolean fullyBlocked = hasRunningPipelines && runningPipelinesFullyBlocked;
-
         return new TaskStats(
                 taskStateMachine.getCreatedTime(),
                 executionStartTime.get(),

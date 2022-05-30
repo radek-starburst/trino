@@ -355,6 +355,7 @@ public class SqlTask
 
     private TaskStats getTaskStats(TaskHolder taskHolder)
     {
+        // TODO: stad pochodza
         TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
         if (finalTaskInfo != null) {
             return finalTaskInfo.getStats();

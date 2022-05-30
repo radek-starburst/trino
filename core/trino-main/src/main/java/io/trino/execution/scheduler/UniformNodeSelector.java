@@ -56,6 +56,7 @@ import static io.trino.execution.scheduler.NodeScheduler.selectExactNodes;
 import static io.trino.execution.scheduler.NodeScheduler.selectNodes;
 import static io.trino.execution.scheduler.NodeScheduler.toWhenHasSplitQueueSpaceFuture;
 import static io.trino.spi.StandardErrorCode.NO_NODES_AVAILABLE;
+import static io.trino.spi.StandardErrorCode.PAGE_TOO_LARGE;
 import static java.util.Comparator.comparingLong;
 import static java.util.Objects.requireNonNull;
 
@@ -126,8 +127,12 @@ public class UniformNodeSelector
     }
 
     @Override
-    public SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks)
+    public SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, int stageId)
     {
+        if(stageId == 3) {
+            System.out.println("computeAssignments from UniformNodeSelector");
+        }
+
         Multimap<InternalNode, Split> assignment = HashMultimap.create();
         NodeMap nodeMap = this.nodeMap.get().get();
         NodeAssignmentStats assignmentStats = new NodeAssignmentStats(nodeTaskMap, nodeMap, existingTasks);
@@ -161,6 +166,10 @@ public class UniformNodeSelector
         }
         else {
             remainingSplits = splits;
+        }
+
+        if(!remainingSplits.isEmpty() && stageId == 3) {
+            System.out.println("For stage 3 we must schedule not locally");
         }
 
         for (Split split : remainingSplits) {

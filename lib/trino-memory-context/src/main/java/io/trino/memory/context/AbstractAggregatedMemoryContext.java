@@ -83,6 +83,8 @@ abstract class AbstractAggregatedMemoryContext
 
     synchronized void addBytes(long bytes)
     {
+        // Tu sie odbywa ta agregacja bajtow w calym tasku.
+
         usedBytes = addExact(usedBytes, bytes);
     }
 

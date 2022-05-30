@@ -117,7 +117,7 @@ public class TopologyAwareNodeSelector
     }
 
     @Override
-    public SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks)
+    public SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, int stageId)
     {
         NodeMap nodeMap = this.nodeMap.get().get();
         Multimap<InternalNode, Split> assignment = HashMultimap.create();

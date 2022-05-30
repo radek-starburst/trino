@@ -35,6 +35,7 @@ class ChildAggregatedMemoryContext
     {
         checkState(!isClosed(), "ChildAggregatedMemoryContext is already closed");
         // update the parent before updating usedBytes as it may throw a runtime exception (e.g., ExceededMemoryLimitException)
+//        System.out.println(String.format("ChildAggregatedMemoryContext::updateBytes %s=%d", allocationTag, delta));
         ListenableFuture<Void> future = parentMemoryContext.updateBytes(allocationTag, delta);
         addBytes(delta);
         return future;
@@ -45,6 +46,7 @@ class ChildAggregatedMemoryContext
     {
         checkState(!isClosed(), "ChildAggregatedMemoryContext is already closed");
         if (parentMemoryContext.tryUpdateBytes(allocationTag, delta)) {
+//            System.out.println(String.format("ChildAggregatedMemoryContext::tryUpdateBytes %s=%d", allocationTag, delta));
             addBytes(delta);
             return true;
         }

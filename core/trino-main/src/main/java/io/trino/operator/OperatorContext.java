@@ -42,6 +42,7 @@ import javax.annotation.concurrent.ThreadSafe;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -331,6 +332,8 @@ public class OperatorContext
         peakRevocableMemoryReservation.accumulateAndGet(revocableMemory, Math::max);
         peakTotalMemoryReservation.accumulateAndGet(totalMemory, Math::max);
     }
+
+    public static ConcurrentHashMap<String, AtomicLong> c = new ConcurrentHashMap<>();
 
     public long getReservedRevocableBytes()
     {

@@ -139,7 +139,7 @@ public class TestingNodeSelectorFactory
         }
 
         @Override
-        public SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks)
+        public SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, int stageId)
         {
             throw new UnsupportedOperationException();
         }

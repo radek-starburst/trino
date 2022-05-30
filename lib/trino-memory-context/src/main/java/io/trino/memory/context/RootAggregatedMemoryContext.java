@@ -15,10 +15,12 @@ package io.trino.memory.context;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
-class RootAggregatedMemoryContext
+public class RootAggregatedMemoryContext
         extends AbstractAggregatedMemoryContext
 {
     private final MemoryReservationHandler reservationHandler;
@@ -36,6 +38,7 @@ class RootAggregatedMemoryContext
         checkState(!isClosed(), "RootAggregatedMemoryContext is already closed");
         ListenableFuture<Void> future = reservationHandler.reserveMemory(allocationTag, delta);
         addBytes(delta);
+//        System.out.println(String.format("RootAggregatedMemoryContext::updateBytes %s=%d", allocationTag, delta));
         // make sure we never block queries below guaranteedMemory
         if (getBytes() < guaranteedMemory) {
             future = NOT_BLOCKED;
@@ -43,11 +46,18 @@ class RootAggregatedMemoryContext
         return future;
     }
 
+    public static ConcurrentHashMap<String, Long> c = new ConcurrentHashMap<>();
+
     @Override
     synchronized boolean tryUpdateBytes(String allocationTag, long delta)
     {
         checkState(!isClosed(), "RootAggregatedMemoryContext is already closed");
         if (reservationHandler.tryReserveMemory(allocationTag, delta)) {
+            if(delta > 0) {
+                c.putIfAbsent(allocationTag, delta);
+                c.computeIfPresent(allocationTag, (k, v) -> v + delta);
+//                System.out.printf("RootAggregatedMemoryContext::tryUpdateBytes %s=%d%n", allocationTag, delta);
+            }
             addBytes(delta);
             return true;
         }

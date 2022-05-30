@@ -43,7 +43,9 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -269,6 +271,7 @@ public class SourcePartitionedScheduler
         }
     }
 
+    private static ConcurrentHashMap<String, AtomicLong> assignments = new ConcurrentHashMap<>();
     @Override
     public synchronized ScheduleResult schedule()
     {
@@ -340,7 +343,15 @@ public class SourcePartitionedScheduler
                 }
 
                 // calculate placements for splits
-                SplitPlacementResult splitPlacementResult = splitPlacementPolicy.computeAssignments(pendingSplits);
+                SplitPlacementResult splitPlacementResult = splitPlacementPolicy.computeAssignments(pendingSplits, stageExecution.getStageId().getId());
+                if(stageExecution.getStageId().getId() == 3) {
+                    splitPlacementResult.getAssignments().forEach((node, split) -> {
+                        assignments.putIfAbsent(node.getNodeIdentifier(), new AtomicLong());
+                        assignments.computeIfPresent(node.getNodeIdentifier(), (nodeId, value) -> {value.incrementAndGet(); return value;});
+                    });
+                    System.out.println(String.format("SourcePartitionedScheduler::schedule for stageId = 3, splitPolicy= %s", splitPlacementPolicy.getClass()));
+                    assignments.forEach((node, counter) -> System.out.println(String.format("%s --> %d", node, counter.get())));
+                }
                 splitAssignment = splitPlacementResult.getAssignments();
 
                 // remove splits with successful placements

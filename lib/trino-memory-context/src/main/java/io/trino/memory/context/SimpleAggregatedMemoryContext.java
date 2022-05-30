@@ -27,6 +27,8 @@ class SimpleAggregatedMemoryContext
     synchronized ListenableFuture<Void> updateBytes(String allocationTag, long delta)
     {
         checkState(!isClosed(), "SimpleAggregatedMemoryContext is already closed");
+//        System.out.println(String.format("SimpleAggregatedMemoryContext:updateBytes %s=%d", allocationTag, delta));
+
         addBytes(delta);
         return NOT_BLOCKED;
     }
@@ -35,6 +37,8 @@ class SimpleAggregatedMemoryContext
     synchronized boolean tryUpdateBytes(String allocationTag, long delta)
     {
         checkState(!isClosed(), "SimpleAggregatedMemoryContext is already closed");
+//        System.out.println(String.format("SimpleAggregatedMemoryContext::tryUpdateBytes %s=%d", allocationTag, delta));
+
         addBytes(delta);
         return true;
     }

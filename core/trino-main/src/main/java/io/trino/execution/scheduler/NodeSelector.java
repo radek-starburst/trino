@@ -40,11 +40,12 @@ public interface NodeSelector
      * Identifies the nodes for running the specified splits.
      *
      * @param splits the splits that need to be assigned to nodes
+     * @param stageId
      * @return a multimap from node to splits only for splits for which we could identify a node to schedule on.
      * If we cannot find an assignment for a split, it is not included in the map. Also returns a future indicating when
      * to reattempt scheduling of this batch of splits, if some of them could not be scheduled.
      */
-    SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks);
+    SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, int stageId);
 
     /**
      * Identifies the nodes for running the specified splits based on a precomputed fixed partitioning.
