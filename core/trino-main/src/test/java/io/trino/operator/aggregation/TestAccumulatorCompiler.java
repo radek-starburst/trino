@@ -82,7 +82,7 @@ public class TestAccumulatorCompiler
 
         BoundSignature signature = new BoundSignature("longTimestampAggregation", RealType.REAL, ImmutableList.of(TIMESTAMP_PICOS));
         MethodHandle inputFunction = methodHandle(aggregation, "input", stateInterface, LongTimestamp.class);
-        inputFunction = normalizeInputMethod(inputFunction, signature, STATE, INPUT_CHANNEL);
+        inputFunction = normalizeInputMethod(inputFunction, signature, false, STATE, INPUT_CHANNEL);
         MethodHandle combineFunction = methodHandle(aggregation, "combine", stateInterface, stateInterface);
         MethodHandle outputFunction = methodHandle(aggregation, "output", stateInterface, BlockBuilder.class);
         AggregationMetadata metadata = new AggregationMetadata(

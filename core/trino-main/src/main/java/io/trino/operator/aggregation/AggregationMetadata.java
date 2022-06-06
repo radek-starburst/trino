@@ -14,9 +14,7 @@
 package io.trino.operator.aggregation;
 
 import com.google.common.collect.ImmutableList;
-import io.trino.spi.function.AccumulatorState;
-import io.trino.spi.function.AccumulatorStateFactory;
-import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.*;
 
 import java.lang.invoke.MethodHandle;
 import java.util.List;
@@ -30,6 +28,7 @@ public class AggregationMetadata
     private final Optional<MethodHandle> removeInputFunction;
     private final Optional<MethodHandle> combineFunction;
     private final MethodHandle outputFunction;
+    private final boolean explicitGroupId; // TODO: napisac o tym w issue.
     private final List<AccumulatorStateDescriptor<?>> accumulatorStateDescriptors;
     private final List<Class<?>> lambdaInterfaces;
 
@@ -46,7 +45,8 @@ public class AggregationMetadata
                 combineFunction,
                 outputFunction,
                 accumulatorStateDescriptors,
-                ImmutableList.of());
+                ImmutableList.of(),
+                false);
     }
 
     public AggregationMetadata(
@@ -57,12 +57,31 @@ public class AggregationMetadata
             List<AccumulatorStateDescriptor<?>> accumulatorStateDescriptors,
             List<Class<?>> lambdaInterfaces)
     {
+        this(inputFunction, removeInputFunction, combineFunction, outputFunction, accumulatorStateDescriptors, lambdaInterfaces, false);
+    }
+
+    public AggregationMetadata(
+            MethodHandle inputFunction,
+            Optional<MethodHandle> removeInputFunction,
+            Optional<MethodHandle> combineFunction,
+            MethodHandle outputFunction,
+            List<AccumulatorStateDescriptor<?>> accumulatorStateDescriptors,
+            List<Class<?>> lambdaInterfaces,
+            boolean explicitGroupId
+    )
+    {
         this.inputFunction = requireNonNull(inputFunction, "inputFunction is null");
         this.removeInputFunction = requireNonNull(removeInputFunction, "removeInputFunction is null");
         this.combineFunction = requireNonNull(combineFunction, "combineFunction is null");
         this.outputFunction = requireNonNull(outputFunction, "outputFunction is null");
         this.accumulatorStateDescriptors = requireNonNull(accumulatorStateDescriptors, "accumulatorStateDescriptors is null");
         this.lambdaInterfaces = ImmutableList.copyOf(requireNonNull(lambdaInterfaces, "lambdaInterfaces is null"));
+        this.explicitGroupId = explicitGroupId;
+    }
+
+    public boolean isExplicitGroupId()
+    {
+        return explicitGroupId;
     }
 
     public MethodHandle getInputFunction()
@@ -109,6 +128,7 @@ public class AggregationMetadata
         }
 
         // this is only used to verify method interfaces
+        // Change this method
         public Class<T> getStateInterface()
         {
             return stateInterface;

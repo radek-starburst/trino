@@ -65,6 +65,6 @@ public final class MergeTDigestAggregation
     @OutputFunction(StandardTypes.TDIGEST)
     public static void output(@AggregationState TDigestState state, BlockBuilder out)
     {
-        serializer.serialize(state, out);
+        serializer.serialize(0, state, out);
     }
 }

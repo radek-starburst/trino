@@ -16,6 +16,8 @@ package io.trino.metadata;
 import com.google.common.collect.ImmutableList;
 import io.trino.operator.aggregation.AggregationFromAnnotationsParser;
 import io.trino.operator.aggregation.AggregationMetadata;
+import io.trino.operator.aggregation.CountAggregation;
+import io.trino.operator.aggregation.DecimalSumAggregation;
 
 import java.util.List;
 
@@ -30,10 +32,13 @@ public abstract class SqlAggregationFunction
     public static List<SqlAggregationFunction> createFunctionsByAnnotations(Class<?> aggregationDefinition)
     {
         try {
+            if(aggregationDefinition == DecimalSumAggregation.class) {
+                System.out.println("");
+            }
             return ImmutableList.copyOf(AggregationFromAnnotationsParser.parseFunctionDefinitions(aggregationDefinition));
         }
         catch (RuntimeException e) {
-            throw new IllegalArgumentException("Invalid aggregation class " + aggregationDefinition.getSimpleName());
+            throw new IllegalArgumentException("Invalid aggregation class " + aggregationDefinition.getSimpleName(), e);
         }
     }
 

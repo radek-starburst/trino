@@ -22,6 +22,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -45,6 +46,7 @@ public final class AggregationFunctionAdapter
         BLOCK_INPUT_CHANNEL,
         NULLABLE_BLOCK_INPUT_CHANNEL,
         BLOCK_INDEX,
+        GROUP_ID,
         STATE
     }
 
@@ -70,33 +72,36 @@ public final class AggregationFunctionAdapter
     public static MethodHandle normalizeInputMethod(
             MethodHandle inputMethod,
             BoundSignature boundSignature,
+            boolean hasAggregationGroupIdParam,
             AggregationParameterKind... parameterKinds)
     {
-        return normalizeInputMethod(inputMethod, boundSignature, ImmutableList.copyOf(parameterKinds));
-    }
-
-    public static MethodHandle normalizeInputMethod(
-            MethodHandle inputMethod,
-            BoundSignature boundSignature,
-            List<AggregationParameterKind> parameterKinds)
-    {
-        return normalizeInputMethod(inputMethod, boundSignature, parameterKinds, 0);
+        return normalizeInputMethod(inputMethod, boundSignature, ImmutableList.copyOf(parameterKinds), hasAggregationGroupIdParam);
     }
 
     public static MethodHandle normalizeInputMethod(
             MethodHandle inputMethod,
             BoundSignature boundSignature,
             List<AggregationParameterKind> parameterKinds,
-            int lambdaCount)
+            boolean hasAggregationGroupIdParam)
+    {
+        return normalizeInputMethod(inputMethod, boundSignature, parameterKinds, 0, hasAggregationGroupIdParam);
+    }
+
+    public static MethodHandle normalizeInputMethod(
+            MethodHandle inputMethod,
+            BoundSignature boundSignature,
+            List<AggregationParameterKind> parameterKinds,
+            int lambdaCount,
+            boolean hasAggregationGroupIdParam)
     {
         requireNonNull(inputMethod, "inputMethod is null");
         requireNonNull(parameterKinds, "parameterKinds is null");
         requireNonNull(boundSignature, "boundSignature is null");
-
+        int groupIdParam = (hasAggregationGroupIdParam ? 1 : 0);
         checkArgument(
-                inputMethod.type().parameterCount() - lambdaCount == parameterKinds.size(),
+                inputMethod.type().parameterCount() - lambdaCount - groupIdParam == parameterKinds.size(),
                 "Input method has %s parameters, but parameter kinds only has %s items",
-                inputMethod.type().parameterCount() - lambdaCount,
+                inputMethod.type().parameterCount() - lambdaCount - groupIdParam,
                 parameterKinds.size());
 
         List<AggregationParameterKind> stateArgumentKinds = parameterKinds.stream().filter(STATE::equals).collect(toImmutableList());
@@ -108,7 +113,7 @@ public final class AggregationFunctionAdapter
         checkArgument(
                 boundSignature.getArgumentTypes().size() - lambdaCount == inputArgumentKinds.size(),
                 "Bound signature has %s arguments, but parameter kinds only has %s input arguments",
-                boundSignature.getArgumentTypes().size() - lambdaCount,
+                boundSignature.getArgumentTypes().size() - lambdaCount - groupIdParam,
                 inputArgumentKinds.size());
 
         List<AggregationParameterKind> expectedInputArgumentKinds = new ArrayList<>();
@@ -155,12 +160,12 @@ public final class AggregationFunctionAdapter
             ArrayList<Integer> reorder;
             if (hasInputChannel) {
                 reorder = IntStream.range(0, inputMethodType.parameterCount()).boxed().collect(Collectors.toCollection(ArrayList::new));
-                reorder.add(parameterIndex + 1, inputMethodType.parameterCount() - 1 - lambdaCount);
+                reorder.add(parameterIndex + 1, inputMethodType.parameterCount() - 1 - lambdaCount - groupIdParam);
             }
             else {
-                inputMethodType = inputMethodType.insertParameterTypes(inputMethodType.parameterCount() - lambdaCount, int.class);
+                inputMethodType = inputMethodType.insertParameterTypes(inputMethodType.parameterCount() - lambdaCount - groupIdParam, int.class);
                 reorder = IntStream.range(0, inputMethodType.parameterCount()).boxed().collect(Collectors.toCollection(ArrayList::new));
-                int positionParameterIndex = inputMethodType.parameterCount() - 1 - lambdaCount;
+                int positionParameterIndex = inputMethodType.parameterCount() - 1 - lambdaCount - groupIdParam;
                 reorder.remove(positionParameterIndex);
                 reorder.add(parameterIndex + 1, positionParameterIndex);
                 hasInputChannel = true;

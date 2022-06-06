@@ -16,6 +16,7 @@ package io.trino.operator.aggregation.state;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.operator.aggregation.state.TriStateBooleanState.FALSE_VALUE;
@@ -33,7 +34,7 @@ public class TriStateBooleanStateSerializer
     }
 
     @Override
-    public void serialize(TriStateBooleanState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, TriStateBooleanState state, BlockBuilder out)
     {
         if (state.getValue() == NULL_VALUE) {
             out.appendNull();
@@ -44,7 +45,7 @@ public class TriStateBooleanStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, TriStateBooleanState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, TriStateBooleanState state)
     {
         state.setValue(BOOLEAN.getBoolean(block, index) ? TRUE_VALUE : FALSE_VALUE);
     }

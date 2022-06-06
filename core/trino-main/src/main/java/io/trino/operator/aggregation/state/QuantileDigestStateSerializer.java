@@ -17,6 +17,7 @@ import io.airlift.stats.QuantileDigest;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.QuantileDigestType;
 import io.trino.spi.type.Type;
 
@@ -39,7 +40,7 @@ public class QuantileDigestStateSerializer
     }
 
     @Override
-    public void serialize(QuantileDigestState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, QuantileDigestState state, BlockBuilder out)
     {
         if (state.getQuantileDigest() == null) {
             out.appendNull();
@@ -50,7 +51,7 @@ public class QuantileDigestStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, QuantileDigestState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, QuantileDigestState state)
     {
         state.setQuantileDigest(new QuantileDigest(type.getSlice(block, index)));
     }

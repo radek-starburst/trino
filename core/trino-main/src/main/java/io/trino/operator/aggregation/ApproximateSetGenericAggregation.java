@@ -158,7 +158,7 @@ public final class ApproximateSetGenericAggregation
     @OutputFunction(StandardTypes.HYPER_LOG_LOG)
     public static void evaluateFinal(@AggregationState HyperLogLogState state, BlockBuilder out)
     {
-        SERIALIZER.serialize(state, out);
+        SERIALIZER.serialize(0, state, out);
     }
 
     public static HyperLogLog getOrCreateHyperLogLog(@AggregationState HyperLogLogState state)

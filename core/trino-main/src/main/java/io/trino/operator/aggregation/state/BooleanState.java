@@ -15,22 +15,12 @@ package io.trino.operator.aggregation.state;
 
 import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateMetadata;
+import io.trino.spi.function.GroupId;
 
-@AccumulatorStateMetadata(stateFactoryClass = LongDecimalWithOverflowStateFactory.class, stateSerializerClass = LongDecimalWithOverflowStateSerializer.class)
-public interface LongDecimalWithOverflowState
-        extends AccumulatorState
+@AccumulatorStateMetadata
+public interface BooleanState extends AccumulatorState
 {
-    boolean isNotNull();
+    boolean getValue(@GroupId long groupId);
 
-    void setNotNull();
-
-    long[] getDecimalArray();
-
-    int getDecimalArrayOffset();
-
-    long getOverflow();
-
-    void setOverflow(long overflow);
-
-    void addOverflow(long overflow);
+    void setValue(@GroupId long groupId, boolean value);
 }

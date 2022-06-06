@@ -16,6 +16,7 @@ package io.trino.operator.aggregation.minmaxn;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static java.util.Objects.requireNonNull;
@@ -37,13 +38,13 @@ public abstract class MinMaxNStateSerializer<T extends MinMaxNState>
     }
 
     @Override
-    public void serialize(T state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, T state, BlockBuilder out)
     {
         state.serialize(out);
     }
 
     @Override
-    public void deserialize(Block block, int index, T state)
+    public void deserialize(@GroupId long groupId, Block block, int index, T state)
     {
         Block rowBlock = (Block) serializedType.getObject(block, index);
         state.deserialize(rowBlock);
