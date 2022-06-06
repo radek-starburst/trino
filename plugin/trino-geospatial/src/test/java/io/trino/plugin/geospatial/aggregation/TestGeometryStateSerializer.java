@@ -38,13 +38,13 @@ public class TestGeometryStateSerializer
         state.setGeometry(OGCGeometry.fromText("POINT (1 2)"));
 
         BlockBuilder builder = GeometryType.GEOMETRY.createBlockBuilder(null, 1);
-        serializer.serialize(state, builder);
+        serializer.serialize(0, state, builder);
         Block block = builder.build();
 
         assertEquals(GeometryType.GEOMETRY.getObjectValue(null, block, 0), "POINT (1 2)");
 
         state.setGeometry(null);
-        serializer.deserialize(block, 0, state);
+        serializer.deserialize(0, block, 0, state);
 
         assertEquals(state.getGeometry().asText(), "POINT (1 2)");
     }
@@ -66,13 +66,13 @@ public class TestGeometryStateSerializer
         state.setGroupId(1);
 
         BlockBuilder builder = GeometryType.GEOMETRY.createBlockBuilder(null, 1);
-        serializer.serialize(state, builder);
+        serializer.serialize(0, state, builder);
         Block block = builder.build();
 
         assertEquals(GeometryType.GEOMETRY.getObjectValue(null, block, 0), "POINT (1 2)");
 
         state.setGeometry(null);
-        serializer.deserialize(block, 0, state);
+        serializer.deserialize(0, block, 0, state);
 
         // Assert the state of group 1
         assertEquals(state.getGeometry().asText(), "POINT (1 2)");

@@ -15,12 +15,7 @@ package io.trino.operator.aggregation;
 
 import io.trino.operator.aggregation.state.LongState;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.RemoveInputFunction;
+import io.trino.spi.function.*;
 import io.trino.spi.type.StandardTypes;
 
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -31,26 +26,26 @@ public final class CountAggregation
     private CountAggregation() {}
 
     @InputFunction
-    public static void input(@AggregationState LongState state)
+    public static void input(@AggregationState LongState state, @GroupId long groupId)
     {
-        state.setValue(state.getValue() + 1);
+        state.setValue(groupId, state.getValue(groupId) + 1);
     }
 
     @RemoveInputFunction
-    public static void removeInput(@AggregationState LongState state)
+    public static void removeInput(@AggregationState LongState state, @GroupId long groupId)
     {
-        state.setValue(state.getValue() - 1);
+        state.setValue(groupId, state.getValue(groupId) - 1);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongState state, @AggregationState LongState otherState)
+    public static void combine(@AggregationState LongState state, @AggregationState LongState otherState, @GroupId long groupId)
     {
-        state.setValue(state.getValue() + otherState.getValue());
+        state.setValue(groupId,state.getValue(groupId) + otherState.getValue(groupId));
     }
 
     @OutputFunction(StandardTypes.BIGINT)
-    public static void output(@AggregationState LongState state, BlockBuilder out)
+    public static void output(@AggregationState LongState state, BlockBuilder out, @GroupId long groupId)
     {
-        BIGINT.writeLong(out, state.getValue());
+        BIGINT.writeLong(out, state.getValue(groupId));
     }
 }

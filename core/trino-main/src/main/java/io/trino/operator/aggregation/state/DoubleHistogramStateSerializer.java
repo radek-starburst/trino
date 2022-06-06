@@ -18,6 +18,7 @@ import io.trino.operator.aggregation.NumericHistogram;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
@@ -32,7 +33,7 @@ public class DoubleHistogramStateSerializer
     }
 
     @Override
-    public void serialize(DoubleHistogramAggregation.State state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, DoubleHistogramAggregation.State state, BlockBuilder out)
     {
         if (state.get() == null) {
             out.appendNull();
@@ -43,7 +44,7 @@ public class DoubleHistogramStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, DoubleHistogramAggregation.State state)
+    public void deserialize(@GroupId long groupId, Block block, int index, DoubleHistogramAggregation.State state)
     {
         state.set(new NumericHistogram(VARBINARY.getSlice(block, index), DoubleHistogramAggregation.ENTRY_BUFFER_SIZE));
     }

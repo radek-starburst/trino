@@ -21,6 +21,7 @@ import io.airlift.stats.TDigest;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.airlift.slice.SizeOf.SIZE_OF_DOUBLE;
@@ -37,7 +38,7 @@ public class TDigestAndPercentileStateSerializer
     }
 
     @Override
-    public void serialize(TDigestAndPercentileState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, TDigestAndPercentileState state, BlockBuilder out)
     {
         if (state.getDigest() == null) {
             out.appendNull();
@@ -55,7 +56,7 @@ public class TDigestAndPercentileStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, TDigestAndPercentileState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, TDigestAndPercentileState state)
     {
         SliceInput input = VARBINARY.getSlice(block, index).getInput();
 

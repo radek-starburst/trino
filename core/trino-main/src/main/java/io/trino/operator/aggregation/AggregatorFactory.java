@@ -71,6 +71,7 @@ public class AggregatorFactory
 
     public GroupedAggregator createGroupedAggregator()
     {
+        // TODO: sprawdzic o co tu chodzi, ze sa dwa akumulatory?
         GroupedAccumulator accumulator;
         if (step.isInputRaw()) {
             accumulator = accumulatorFactory.createGroupedAccumulator(lambdaProviders);

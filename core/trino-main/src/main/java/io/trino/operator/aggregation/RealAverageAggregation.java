@@ -24,6 +24,8 @@ import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.RemoveInputFunction;
 import io.trino.spi.function.SqlType;
+import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 
 import static io.trino.spi.type.RealType.REAL;
 import static java.lang.Float.floatToIntBits;
@@ -39,9 +41,10 @@ public final class RealAverageAggregation
     public static void input(
             @AggregationState LongState count,
             @AggregationState DoubleState sum,
-            @SqlType("REAL") long value)
+            @SqlType("REAL") long value,
+            @GroupId long groupId)
     {
-        count.setValue(count.getValue() + 1);
+        count.setValue(groupId, count.getValue(groupId) + 1);
         sum.setValue(sum.getValue() + intBitsToFloat((int) value));
     }
 
@@ -49,9 +52,10 @@ public final class RealAverageAggregation
     public static void removeInput(
             @AggregationState LongState count,
             @AggregationState DoubleState sum,
-            @SqlType("REAL") long value)
+            @SqlType("REAL") long value,
+            @GroupId long groupId)
     {
-        count.setValue(count.getValue() - 1);
+        count.setValue(groupId, count.getValue(groupId) - 1);
         sum.setValue(sum.getValue() - intBitsToFloat((int) value));
     }
 
@@ -60,9 +64,10 @@ public final class RealAverageAggregation
             @AggregationState LongState count,
             @AggregationState DoubleState sum,
             @AggregationState LongState otherCount,
-            @AggregationState DoubleState otherSum)
+            @AggregationState DoubleState otherSum,
+            @GroupId long groupId)
     {
-        count.setValue(count.getValue() + otherCount.getValue());
+        count.setValue(groupId, count.getValue(groupId) + otherCount.getValue(groupId));
         sum.setValue(sum.getValue() + otherSum.getValue());
     }
 
@@ -70,13 +75,14 @@ public final class RealAverageAggregation
     public static void output(
             @AggregationState LongState count,
             @AggregationState DoubleState sum,
-            BlockBuilder out)
+            BlockBuilder out,
+            @GroupId long groupId)
     {
-        if (count.getValue() == 0) {
+        if (count.getValue(groupId) == 0) {
             out.appendNull();
         }
         else {
-            REAL.writeLong(out, floatToIntBits((float) (sum.getValue() / count.getValue())));
+            REAL.writeLong(out, floatToIntBits((float) (sum.getValue() / count.getValue(groupId))));
         }
     }
 }

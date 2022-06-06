@@ -17,39 +17,37 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
 import io.trino.spi.function.GroupId;
+import io.trino.spi.type.DecimalType;
+import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Type;
 
-import static io.trino.spi.type.DoubleType.DOUBLE;
+import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 
-public class NullableDoubleStateSerializer
-        implements AccumulatorStateSerializer<NullableDoubleState>
+public class Int128StateSerializer
+        implements AccumulatorStateSerializer<Int128State>
 {
     @Override
     public Type getSerializedType()
     {
-        return DOUBLE;
+        return DecimalType.createDecimalType(Decimals.MAX_SHORT_PRECISION + 1);
     }
 
     @Override
-    public void serialize(@GroupId long groupId, NullableDoubleState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, Int128State state, BlockBuilder out)
     {
-        if (state.isNull()) {
-            out.appendNull();
-        }
-        else {
-            DOUBLE.writeDouble(out, state.getValue());
-        }
+        long[] decimal = state.getArray(groupId);
+        int offset = state.getArrayOffset(groupId);
+        out.writeLong(decimal[offset]).writeLong(decimal[offset + 1]).closeEntry();
     }
 
     @Override
-    public void deserialize(@GroupId long groupId, Block block, int index, NullableDoubleState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, Int128State state)
     {
-        if (block.isNull(index)) {
-            state.setNull(true);
-        }
-        else {
-            state.setNull(false);
-            state.setValue(DOUBLE.getDouble(block, index));
+        if(!block.isNull(index)) {
+            long[] decimal = state.getArray(groupId);
+            int offset = state.getArrayOffset(groupId);
+            decimal[offset] = block.getLong(index, 0);
+            decimal[offset + 1] = block.getLong(index, SIZE_OF_LONG);
         }
     }
 }

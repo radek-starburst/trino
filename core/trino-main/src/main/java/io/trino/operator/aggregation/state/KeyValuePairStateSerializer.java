@@ -21,6 +21,7 @@ import io.trino.spi.function.Convention;
 import io.trino.spi.function.OperatorDependency;
 import io.trino.spi.function.OperatorType;
 import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 import io.trino.type.BlockTypeOperators.BlockPositionEqual;
 import io.trino.type.BlockTypeOperators.BlockPositionHashCode;
@@ -62,7 +63,7 @@ public class KeyValuePairStateSerializer
     }
 
     @Override
-    public void serialize(KeyValuePairsState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, KeyValuePairsState state, BlockBuilder out)
     {
         if (state.get() == null) {
             out.appendNull();
@@ -73,7 +74,7 @@ public class KeyValuePairStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, KeyValuePairsState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, KeyValuePairsState state)
     {
         state.set(new KeyValuePairs((Block) mapType.getObject(block, index), state.getKeyType(), keyEqual, keyHashCode, state.getValueType()));
     }

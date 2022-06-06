@@ -17,6 +17,4 @@ public interface GroupedAccumulatorState
         extends AccumulatorState
 {
     void setGroupId(long groupId);
-
-    void ensureCapacity(long size);
 }

@@ -12,10 +12,10 @@
  * limitations under the License.
  */
 package io.trino.operator.aggregation;
-
-import io.trino.operator.aggregation.state.LongDecimalWithOverflowState;
+import io.trino.operator.aggregation.state.*;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.AggregationFunction;
 import io.trino.spi.function.AggregationState;
 import io.trino.spi.function.BlockIndex;
@@ -41,13 +41,16 @@ public final class DecimalSumAggregation
     @InputFunction
     @LiteralParameters({"p", "s"})
     public static void inputShortDecimal(
-            @AggregationState LongDecimalWithOverflowState state,
-            @SqlType("decimal(p,s)") long rightLow)
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState overflowState,
+            @AggregationState BooleanState isEmptyState,
+            @SqlType("decimal(p,s)") long rightLow,
+            @GroupId long groupId)
     {
-        state.setNotNull();
+        isEmptyState.setValue(groupId, true);
 
-        long[] decimal = state.getDecimalArray();
-        int offset = state.getDecimalArrayOffset();
+        long[] decimal = decimalState.getArray(groupId);
+        int offset = decimalState.getArrayOffset(groupId);
 
         long rightHigh = rightLow >> 63;
 
@@ -58,20 +61,23 @@ public final class DecimalSumAggregation
                 rightLow,
                 decimal,
                 offset);
-        state.setOverflow(Math.addExact(overflow, state.getOverflow()));
+        overflowState.setValue(groupId, Math.addExact(overflow, overflowState.getValue(groupId)));
     }
 
     @InputFunction
     @LiteralParameters({"p", "s"})
     public static void inputLongDecimal(
-            @AggregationState LongDecimalWithOverflowState state,
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState overflowState,
+            @AggregationState BooleanState isEmptyState,
             @BlockPosition @SqlType(value = "decimal(p,s)", nativeContainerType = Int128.class) Block block,
-            @BlockIndex int position)
+            @BlockIndex int position,
+            @GroupId long groupId)
     {
-        state.setNotNull();
+        isEmptyState.setValue(groupId, true);
 
-        long[] decimal = state.getDecimalArray();
-        int offset = state.getDecimalArrayOffset();
+        long[] decimal = decimalState.getArray(groupId);
+        int offset = decimalState.getArrayOffset(groupId);
 
         long rightHigh = block.getLong(position, 0);
         long rightLow = block.getLong(position, SIZE_OF_LONG);
@@ -84,46 +90,55 @@ public final class DecimalSumAggregation
                 decimal,
                 offset);
 
-        state.addOverflow(overflow);
+        overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongDecimalWithOverflowState state, @AggregationState LongDecimalWithOverflowState otherState)
+    public static void combine(
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState overflowState,
+            @AggregationState BooleanState isEmptyState,
+            @AggregationState Int128State otherDecimalState,
+            @AggregationState LongState otherOverflowState,
+            @AggregationState BooleanState otherIsEmptyState,
+            @GroupId long groupId)
     {
-        long[] decimal = state.getDecimalArray();
-        int offset = state.getDecimalArrayOffset();
-
-        long[] otherDecimal = otherState.getDecimalArray();
-        int otherOffset = otherState.getDecimalArrayOffset();
-
-        if (state.isNotNull()) {
-            long overflow = addWithOverflow(
-                    decimal[offset],
-                    decimal[offset + 1],
-                    otherDecimal[otherOffset],
-                    otherDecimal[otherOffset + 1],
-                    decimal,
-                    offset);
-            state.addOverflow(Math.addExact(overflow, otherState.getOverflow()));
+        if (!otherIsEmptyState.getValue(groupId)) {
+            return;
         }
-        else {
-            state.setNotNull();
-            decimal[offset] = otherDecimal[otherOffset];
-            decimal[offset + 1] = otherDecimal[otherOffset + 1];
-            state.setOverflow(otherState.getOverflow());
-        }
+
+        long[] decimal = decimalState.getArray(groupId);
+        int decimalOffset = decimalState.getArrayOffset(groupId);
+        long[] otherDecimal = otherDecimalState.getArray(groupId);
+        int otherDecimalOffset = otherDecimalState.getArrayOffset(groupId);
+
+        long overflow = addWithOverflow(
+                decimal[decimalOffset],
+                decimal[decimalOffset + 1],
+                otherDecimal[otherDecimalOffset],
+                otherDecimal[otherDecimalOffset + 1],
+                decimal,
+                decimalOffset);
+
+        isEmptyState.setValue(groupId, true);
+        overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId));
     }
 
     @OutputFunction("decimal(38,s)")
-    public static void outputLongDecimal(@AggregationState LongDecimalWithOverflowState state, BlockBuilder out)
+    public static void outputLongDecimal(
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState overflowState,
+            @AggregationState BooleanState isEmptyState,
+            BlockBuilder out,
+            @GroupId long groupId)
     {
-        if (state.isNotNull()) {
-            if (state.getOverflow() != 0) {
+        if (isEmptyState.getValue(groupId)) {
+            if (overflowState.getValue(groupId) != 0) {
                 throw new ArithmeticException("Decimal overflow");
             }
 
-            long[] decimal = state.getDecimalArray();
-            int offset = state.getDecimalArrayOffset();
+            long[] decimal = decimalState.getArray(groupId);
+            int offset = decimalState.getArrayOffset(groupId);
 
             long rawHigh = decimal[offset];
             long rawLow = decimal[offset + 1];

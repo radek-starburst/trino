@@ -16,6 +16,7 @@ package io.trino.operator.aggregation.state;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 public class BlockPositionStateSerializer
@@ -35,7 +36,7 @@ public class BlockPositionStateSerializer
     }
 
     @Override
-    public void serialize(BlockPositionState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, BlockPositionState state, BlockBuilder out)
     {
         if (state.getBlock() == null) {
             out.appendNull();
@@ -46,7 +47,7 @@ public class BlockPositionStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, BlockPositionState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, BlockPositionState state)
     {
         // Use the original serialized block as the underlying block for the state to save object creation overhead
         state.setPosition(index);
