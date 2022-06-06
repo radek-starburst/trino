@@ -15,12 +15,7 @@ package io.trino.testing;
 
 import io.trino.operator.aggregation.state.NullableLongState;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.SqlType;
+import io.trino.spi.function.*;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.StandardTypes;
 
@@ -30,26 +25,26 @@ public final class CustomSum
     private CustomSum() {}
 
     @InputFunction
-    public static void input(@AggregationState NullableLongState state, @SqlType(StandardTypes.BIGINT) long value)
+    public static void input(@AggregationState NullableLongState state, @SqlType(StandardTypes.BIGINT) long value, @GroupId long groupId)
     {
-        state.setValue(state.getValue() + value);
-        state.setNull(false);
+        state.setValue(groupId, state.getValue(groupId) + value);
+        state.setNull(groupId, false);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState NullableLongState state, @AggregationState NullableLongState otherState)
+    public static void combine(@AggregationState NullableLongState state, @AggregationState NullableLongState otherState, @GroupId long groupId)
     {
-        if (state.isNull()) {
-            state.set(otherState);
+        if (state.isNull(groupId)) {
+            state.set(groupId, otherState);
             return;
         }
 
-        state.setValue(state.getValue() + otherState.getValue());
+        state.setValue(groupId, state.getValue(groupId) + otherState.getValue(groupId));
     }
 
     @OutputFunction(StandardTypes.BIGINT)
-    public static void output(@AggregationState NullableLongState state, BlockBuilder out)
+    public static void output(@AggregationState NullableLongState state, BlockBuilder out, @GroupId long groupId)
     {
-        NullableLongState.write(BigintType.BIGINT, state, out);
+        NullableLongState.write(groupId, BigintType.BIGINT, state, out);
     }
 }
