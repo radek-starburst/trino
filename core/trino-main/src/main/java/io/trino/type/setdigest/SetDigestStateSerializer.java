@@ -17,6 +17,7 @@ package io.trino.type.setdigest;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.type.setdigest.SetDigestType.SET_DIGEST;
@@ -31,7 +32,7 @@ public class SetDigestStateSerializer
     }
 
     @Override
-    public void serialize(SetDigestState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, SetDigestState state, BlockBuilder out)
     {
         if (state.getDigest() == null) {
             out.appendNull();
@@ -42,7 +43,7 @@ public class SetDigestStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, SetDigestState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, SetDigestState state)
     {
         state.setDigest(SetDigest.newInstance(block.getSlice(index, 0, block.getSliceLength(index))));
     }

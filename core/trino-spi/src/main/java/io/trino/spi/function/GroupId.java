@@ -13,17 +13,14 @@
  */
 package io.trino.spi.function;
 
-public interface AccumulatorState
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Retention(RUNTIME)
+@Target(PARAMETER)
+public @interface GroupId
 {
-    long getEstimatedSize();
-
-    default AccumulatorState copy()
-    {
-        throw new UnsupportedOperationException("copy not implemented for " + getClass());
-    }
-
-    default void ensureCapacity(long size) {
-        throw new UnsupportedOperationException("ensureCapacity not implemented for " + getClass());
-    }
-
 }

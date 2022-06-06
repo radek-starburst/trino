@@ -27,6 +27,13 @@ import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.RemoveInputFunction;
 import io.trino.spi.function.SqlType;
 import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.AccumulatorStateFactory;
+import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
+import io.trino.spi.type.TypeSignature;
+
+import java.lang.invoke.MethodHandle;
+import java.util.Optional;
 
 import static io.trino.spi.type.BigintType.BIGINT;
 
@@ -41,29 +48,31 @@ public final class CountColumn
     public static void input(
             @AggregationState LongState state,
             @BlockPosition @SqlType("T") Block block,
-            @BlockIndex int position)
+            @BlockIndex int position,
+            @GroupId long groupId)
     {
-        state.setValue(state.getValue() + 1);
+        state.setValue(groupId, state.getValue(groupId) + 1);
     }
 
     @RemoveInputFunction
     public static void removeInput(
             @AggregationState LongState state,
             @BlockPosition @SqlType("T") Block block,
-            @BlockIndex int position)
+            @BlockIndex int position,
+            @GroupId long groupId)
     {
-        state.setValue(state.getValue() - 1);
+        state.setValue(groupId, state.getValue(groupId) - 1);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongState state, LongState otherState)
+    public static void combine(@AggregationState LongState state, LongState otherState, @GroupId long groupId)
     {
-        state.setValue(state.getValue() + otherState.getValue());
+        state.setValue(groupId, state.getValue(groupId) + otherState.getValue(groupId));
     }
 
     @OutputFunction("BIGINT")
-    public static void output(@AggregationState LongState state, BlockBuilder out)
+    public static void output(@AggregationState LongState state, BlockBuilder out, @GroupId long groupId)
     {
-        BIGINT.writeLong(out, state.getValue());
+        BIGINT.writeLong(out, state.getValue(groupId));
     }
 }

@@ -171,15 +171,18 @@ public class ParametricAggregation
         MethodHandle outputHandle = bindDependencies(concreteImplementation.getOutputFunction(), concreteImplementation.getOutputDependencies(), functionBinding, functionDependencies);
 
         List<AggregationParameterKind> inputParameterKinds = concreteImplementation.getInputParameterKinds();
-        inputHandle = normalizeInputMethod(inputHandle, boundSignature, inputParameterKinds);
-        removeInputHandle = removeInputHandle.map(function -> normalizeInputMethod(function, boundSignature, inputParameterKinds));
+        inputHandle = normalizeInputMethod(inputHandle, boundSignature, inputParameterKinds, concreteImplementation.hasAggregationFunctionGroupIdParam("input"));
+        removeInputHandle = removeInputHandle.map(function -> normalizeInputMethod(function, boundSignature, inputParameterKinds, concreteImplementation.hasAggregationFunctionGroupIdParam("removeInput")));
 
         return new AggregationMetadata(
                 inputHandle,
                 removeInputHandle,
                 combineHandle,
                 outputHandle,
-                accumulatorStateDescriptors);
+                accumulatorStateDescriptors,
+                ImmutableList.of(),
+                concreteImplementation.hasAggregationFunctionGroupIdParam("input") // TODO
+        );
     }
 
     @VisibleForTesting

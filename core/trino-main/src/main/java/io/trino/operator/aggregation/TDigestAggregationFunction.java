@@ -17,13 +17,7 @@ import io.airlift.stats.TDigest;
 import io.trino.operator.aggregation.state.StateCompiler;
 import io.trino.operator.aggregation.state.TDigestState;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AccumulatorStateSerializer;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.SqlType;
+import io.trino.spi.function.*;
 import io.trino.spi.type.StandardTypes;
 
 import static io.trino.operator.scalar.TDigestFunctions.verifyWeight;
@@ -83,8 +77,8 @@ public final class TDigestAggregationFunction
     }
 
     @OutputFunction(StandardTypes.TDIGEST)
-    public static void output(@AggregationState TDigestState state, BlockBuilder out)
+    public static void output(@GroupId long groupId, @AggregationState TDigestState state, BlockBuilder out)
     {
-        serializer.serialize(state, out);
+        serializer.serialize(0, state, out);
     }
 }

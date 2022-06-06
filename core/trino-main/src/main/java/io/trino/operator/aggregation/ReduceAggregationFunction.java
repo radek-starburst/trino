@@ -129,7 +129,7 @@ public class ReduceAggregationFunction
         }
 
         inputMethodHandle = inputMethodHandle.asType(inputMethodHandle.type().changeParameterType(1, inputType.getJavaType()));
-        inputMethodHandle = normalizeInputMethod(inputMethodHandle, boundSignature, ImmutableList.of(STATE, INPUT_CHANNEL, INPUT_CHANNEL), 2);
+        inputMethodHandle = normalizeInputMethod(inputMethodHandle, boundSignature, ImmutableList.of(STATE, INPUT_CHANNEL, INPUT_CHANNEL), 2, false);
 
         return new AggregationMetadata(
                 inputMethodHandle,

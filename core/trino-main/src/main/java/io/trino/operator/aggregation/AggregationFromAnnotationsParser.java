@@ -29,21 +29,7 @@ import io.trino.operator.annotations.FunctionsParserHelper;
 import io.trino.operator.annotations.ImplementationDependency;
 import io.trino.operator.annotations.TypeImplementationDependency;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AccumulatorState;
-import io.trino.spi.function.AccumulatorStateFactory;
-import io.trino.spi.function.AccumulatorStateMetadata;
-import io.trino.spi.function.AccumulatorStateSerializer;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.FunctionDependency;
-import io.trino.spi.function.InOut;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.LiteralParameter;
-import io.trino.spi.function.OperatorDependency;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.RemoveInputFunction;
-import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.*;
 import io.trino.spi.type.TypeSignature;
 
 import java.lang.annotation.Annotation;
@@ -311,7 +297,9 @@ public final class AggregationFromAnnotationsParser
                 .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(TypeParameter.class::isInstance))
                 .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(LiteralParameter.class::isInstance))
                 .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(OperatorDependency.class::isInstance))
-                .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(FunctionDependency.class::isInstance));
+                .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(FunctionDependency.class::isInstance))
+                .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(GroupId.class::isInstance));
+
     }
 
     private static List<Class<?>> getNonDependencyParameterTypes(Method function)

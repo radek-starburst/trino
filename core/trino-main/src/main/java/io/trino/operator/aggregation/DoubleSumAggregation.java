@@ -61,3 +61,5 @@ public final class DoubleSumAggregation
         }
     }
 }
+
+// TODO: rozbic to na dwa stany

@@ -36,11 +36,7 @@ import io.trino.spi.Page;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ColumnarRow;
-import io.trino.spi.function.AccumulatorState;
-import io.trino.spi.function.AccumulatorStateFactory;
-import io.trino.spi.function.AccumulatorStateSerializer;
-import io.trino.spi.function.GroupedAccumulatorState;
-import io.trino.spi.function.WindowIndex;
+import io.trino.spi.function.*;
 import io.trino.sql.gen.Binding;
 import io.trino.sql.gen.CallSiteBinder;
 import io.trino.sql.gen.CompilerOperations;
@@ -49,10 +45,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Supplier;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -135,13 +128,14 @@ public final class AccumulatorCompiler
         CallSiteBinder callSiteBinder = new CallSiteBinder();
 
         List<AccumulatorStateDescriptor<?>> stateDescriptors = metadata.getAccumulatorStateDescriptors();
+
         List<StateFieldAndDescriptor> stateFieldAndDescriptors = new ArrayList<>();
         for (int i = 0; i < stateDescriptors.size(); i++) {
             stateFieldAndDescriptors.add(new StateFieldAndDescriptor(
                     stateDescriptors.get(i),
                     definition.declareField(a(PRIVATE, FINAL), "stateSerializer_" + i, AccumulatorStateSerializer.class),
                     definition.declareField(a(PRIVATE, FINAL), "stateFactory_" + i, AccumulatorStateFactory.class),
-                    definition.declareField(a(PRIVATE, FINAL), "state_" + i, grouped ? GroupedAccumulatorState.class : AccumulatorState.class)));
+                    definition.declareField(a(PRIVATE, FINAL), "state_" + i, grouped && !isStateGroupIdParamExplicit(stateDescriptors.get(i).getStateInterface()) ? GroupedAccumulatorState.class : AccumulatorState.class)));
         }
         List<FieldDefinition> stateFields = stateFieldAndDescriptors.stream()
                 .map(StateFieldAndDescriptor::getStateField)
@@ -170,19 +164,21 @@ public final class AccumulatorCompiler
 
         generateAddInput(
                 definition,
-                stateFields,
+                stateFieldAndDescriptors,
                 argumentNullable,
                 lambdaProviderFields,
                 metadata.getInputFunction(),
                 callSiteBinder,
-                grouped);
+                metadata,
+                grouped
+        );
         generateGetEstimatedSize(definition, stateFields);
 
         generateAddIntermediateAsCombine(
                 definition,
                 stateFieldAndDescriptors,
                 lambdaProviderFields,
-                metadata.getCombineFunction(),
+                metadata,
                 callSiteBinder,
                 grouped);
 
@@ -194,10 +190,10 @@ public final class AccumulatorCompiler
         }
 
         if (grouped) {
-            generateGroupedEvaluateFinal(definition, stateFields, metadata.getOutputFunction(), callSiteBinder);
+            generateGroupedEvaluateFinal(definition, stateFieldAndDescriptors, metadata.getOutputFunction(), callSiteBinder, metadata);
         }
         else {
-            generateEvaluateFinal(definition, stateFields, metadata.getOutputFunction(), callSiteBinder);
+            generateEvaluateFinal(definition, stateFields, metadata.getOutputFunction(), callSiteBinder, metadata);
         }
 
         if (grouped) {
@@ -281,7 +277,7 @@ public final class AccumulatorCompiler
                         "removeInput",
                         callSiteBinder));
 
-        generateEvaluateFinal(definition, stateFields, metadata.getOutputFunction(), callSiteBinder);
+        generateEvaluateFinal(definition, stateFields, metadata.getOutputFunction(), callSiteBinder, metadata);
         generateGetEstimatedSize(definition, stateFields);
 
         Class<? extends WindowAccumulator> windowAccumulatorClass = defineClass(definition, WindowAccumulator.class, callSiteBinder.getBindings(), classLoader);
@@ -291,6 +287,14 @@ public final class AccumulatorCompiler
         catch (NoSuchMethodException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static boolean isStateGroupIdParamExplicit(AccumulatorStateDescriptor<? extends AccumulatorState> descriptor) {
+        return Arrays.stream(descriptor.getStateInterface().getMethods()).filter(it -> it.getName().startsWith("get") || it.getName().startsWith("is")).flatMap(it -> Arrays.stream(it.getParameterAnnotations())).flatMap(Arrays::stream).anyMatch(it -> it instanceof GroupId);
+    }
+
+    public static boolean isStateGroupIdParamExplicit(Class<? extends AccumulatorState> clazz) {
+        return Arrays.stream(clazz.getMethods()).filter(it -> it.getName().startsWith("get") || it.getName().startsWith("is")).flatMap(it -> Arrays.stream(it.getParameters())).map(it -> it.getAnnotation(GroupId.class)).anyMatch(Objects::nonNull);
     }
 
     private static void generateWindowAccumulatorConstructor(
@@ -333,11 +337,12 @@ public final class AccumulatorCompiler
 
     private static void generateAddInput(
             ClassDefinition definition,
-            List<FieldDefinition> stateField,
+            List<StateFieldAndDescriptor> stateFieldAndDescriptors,
             List<Boolean> argumentNullable,
             List<FieldDefinition> lambdaProviderFields,
             MethodHandle inputFunction,
             CallSiteBinder callSiteBinder,
+            AggregationMetadata metadata,
             boolean grouped)
     {
         ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
@@ -354,7 +359,7 @@ public final class AccumulatorCompiler
         BytecodeBlock body = method.getBody();
 
         if (grouped) {
-            generateEnsureCapacity(scope, stateField, body);
+            generateEnsureCapacity(scope, stateFieldAndDescriptors, body);
         }
 
         List<Variable> parameterVariables = new ArrayList<>();
@@ -371,7 +376,7 @@ public final class AccumulatorCompiler
 
         BytecodeBlock block = generateInputForLoop(
                 arguments,
-                stateField,
+                stateFieldAndDescriptors,
                 argumentNullable,
                 inputFunction,
                 scope,
@@ -379,6 +384,7 @@ public final class AccumulatorCompiler
                 lambdaProviderFields,
                 masksBlock,
                 callSiteBinder,
+                metadata,
                 grouped);
 
         body.append(block);
@@ -483,9 +489,15 @@ public final class AccumulatorCompiler
         return expressions;
     }
 
+    private static boolean isGroupIdExplicit(AggregationMetadata metadata)
+    {
+        // TODO: check that
+        return metadata.isExplicitGroupId();
+    }
+
     private static BytecodeBlock generateInputForLoop(
             Variable arguments,
-            List<FieldDefinition> stateField,
+            List<StateFieldAndDescriptor> stateFieldAndDescriptors,
             List<Boolean> argumentNullable,
             MethodHandle inputFunction,
             Scope scope,
@@ -493,81 +505,100 @@ public final class AccumulatorCompiler
             List<FieldDefinition> lambdaProviderFields,
             Variable masksBlock,
             CallSiteBinder callSiteBinder,
+            AggregationMetadata metadata,
             boolean grouped)
     {
         // For-loop over rows
         Variable positionVariable = scope.declareVariable(int.class, "position");
         Variable rowsVariable = scope.declareVariable(int.class, "rows");
+        Variable mayHaveNull = scope.declareVariable(boolean.class, "mayHaveNull");
+
+        BytecodeExpression mayHaveNullCondition = BytecodeExpressions.constantFalse();
+        BytecodeExpression isPositionNull = BytecodeExpressions.constantFalse();
+
+        for (int parameterIndex = 0; parameterIndex < parameterVariables.size(); parameterIndex++) {
+            if (!argumentNullable.get(parameterIndex)) {
+                Variable variableDefinition = parameterVariables.get(parameterIndex);
+                mayHaveNullCondition = BytecodeExpressions.or(mayHaveNullCondition, variableDefinition.cast(Block.class).invoke("mayHaveNull", boolean.class));
+                isPositionNull = BytecodeExpressions.or(isPositionNull, variableDefinition.cast(Block.class).invoke("isNull", boolean.class, positionVariable));
+                // mozna uzyc invoke vs invokeInterface?
+            }
+        }
 
         BytecodeBlock block = new BytecodeBlock()
                 .append(arguments)
                 .invokeVirtual(Page.class, "getPositionCount", int.class)
                 .putVariable(rowsVariable)
-                .initializeVariable(positionVariable);
+                .initializeVariable(positionVariable)
+                .append(mayHaveNullCondition)
+                .putVariable(mayHaveNull);
 
         BytecodeNode loopBody = generateInvokeInputFunction(
                 scope,
-                stateField,
+                stateFieldAndDescriptors,
                 positionVariable,
                 parameterVariables,
                 lambdaProviderFields,
                 inputFunction,
                 callSiteBinder,
+                metadata,
                 grouped);
 
-        //  Wrap with null checks
-        for (int parameterIndex = 0; parameterIndex < parameterVariables.size(); parameterIndex++) {
-            if (!argumentNullable.get(parameterIndex)) {
-                Variable variableDefinition = parameterVariables.get(parameterIndex);
-                loopBody = new IfStatement("if(!%s.isNull(position))", variableDefinition.getName())
-                        .condition(new BytecodeBlock()
-                                .getVariable(variableDefinition)
-                                .getVariable(positionVariable)
-                                .invokeInterface(Block.class, "isNull", boolean.class, int.class))
-                        .ifFalse(loopBody);
-            }
-        }
 
-        loopBody = new IfStatement("if(testMask(%s, position))", masksBlock.getName())
-                .condition(new BytecodeBlock()
-                        .getVariable(masksBlock)
-                        .getVariable(positionVariable)
-                        .invokeStatic(CompilerOperations.class, "testMask", boolean.class, Block.class, int.class))
+        //  Wrap with null checks and testMask
+        IfStatement loopBodyWithNulls = new IfStatement("if(testMask(%s, position) && anyBlock.mayHaveNull())", masksBlock.getName())
+                .condition(BytecodeExpressions.and(
+                        BytecodeExpressions.invokeStatic(CompilerOperations.class, "testMask", boolean.class, masksBlock, positionVariable),
+                        BytecodeExpressions.not(isPositionNull)))
                 .ifTrue(loopBody);
 
-        ForLoop forLoop = new ForLoop()
+        IfStatement loopBodyWithoutNulls = new IfStatement("if(testMask(%s, position))", masksBlock.getName())
+                .condition(BytecodeExpressions.invokeStatic(CompilerOperations.class, "testMask", boolean.class, masksBlock, positionVariable))
+                .ifTrue(loopBody);
+
+        // jak bedzie problem z inlinem to mozna generowac metode i potem do niej przypisac odpowiedni resolver
+        ForLoop forLoopWithNulls = new ForLoop()
                 .initialize(new BytecodeBlock().putVariable(positionVariable, 0))
-                .condition(new BytecodeBlock()
-                        .getVariable(positionVariable)
-                        .getVariable(rowsVariable)
-                        .invokeStatic(CompilerOperations.class, "lessThan", boolean.class, int.class, int.class))
+                .condition(BytecodeExpressions.lessThan(positionVariable, rowsVariable))
                 .update(new BytecodeBlock().incrementVariable(positionVariable, (byte) 1))
-                .body(loopBody);
+                .body(loopBodyWithNulls);
+
+        ForLoop forLoopWithoutNulls = new ForLoop()
+                .initialize(new BytecodeBlock().putVariable(positionVariable, 0))
+                .condition(BytecodeExpressions.lessThan(positionVariable, rowsVariable))
+                .update(new BytecodeBlock().incrementVariable(positionVariable, (byte) 1))
+                .body(loopBodyWithoutNulls);
+
+        IfStatement notOrMayHaveNullIf = new IfStatement("if(anyBlock.mayHaveNull())")
+                .condition(mayHaveNull)
+                .ifTrue(forLoopWithNulls)
+                .ifFalse(forLoopWithoutNulls);
 
         block.append(new IfStatement("if(!maskGuaranteedToFilterAllRows(%s, %s))", rowsVariable.getName(), masksBlock.getName())
                 .condition(new BytecodeBlock()
                         .getVariable(rowsVariable)
                         .getVariable(masksBlock)
                         .invokeStatic(AggregationUtils.class, "maskGuaranteedToFilterAllRows", boolean.class, int.class, Block.class))
-                .ifFalse(forLoop));
+                .ifFalse(notOrMayHaveNullIf));
 
         return block;
     }
 
     private static BytecodeBlock generateInvokeInputFunction(
             Scope scope,
-            List<FieldDefinition> stateField,
+            List<StateFieldAndDescriptor> stateFieldAndDescriptors,
             Variable position,
             List<Variable> parameterVariables,
             List<FieldDefinition> lambdaProviderFields,
             MethodHandle inputFunction,
             CallSiteBinder callSiteBinder,
+            AggregationMetadata metadata,
             boolean grouped)
     {
         BytecodeBlock block = new BytecodeBlock();
 
         if (grouped) {
-            generateSetGroupIdFromGroupIdsBlock(scope, stateField, block);
+            generateSetGroupIdFromGroupIdsBlock(scope, stateFieldAndDescriptors, block);
         }
 
         block.comment("Call input function with unpacked Block arguments");
@@ -575,8 +606,8 @@ public final class AccumulatorCompiler
         List<BytecodeExpression> parameters = new ArrayList<>();
 
         // state parameters
-        for (FieldDefinition field : stateField) {
-            parameters.add(scope.getThis().getField(field));
+        for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
+            parameters.add(scope.getThis().getField(stateFieldAndDescriptor.stateField));
         }
 
         // input parameters
@@ -592,6 +623,13 @@ public final class AccumulatorCompiler
             parameters.add(scope.getThis().getField(lambdaProviderField)
                     .invoke("get", Object.class));
         }
+        if (isGroupIdExplicit(metadata)) {
+            if(grouped) {
+                parameters.add(scope.getVariable("groupIdsBlock").invoke("getGroupId", long.class, position));
+            } else {
+                parameters.add(constantLong(0));
+            }
+        }
 
         block.append(invoke(callSiteBinder.bind(inputFunction), "input", parameters));
         return block;
@@ -601,17 +639,19 @@ public final class AccumulatorCompiler
             ClassDefinition definition,
             List<StateFieldAndDescriptor> stateFieldAndDescriptors,
             List<FieldDefinition> lambdaProviderFields,
-            Optional<MethodHandle> combineFunction,
+            AggregationMetadata metadata,
             CallSiteBinder callSiteBinder,
             boolean grouped)
     {
         MethodDefinition method = declareAddIntermediate(definition, grouped);
-        if (combineFunction.isEmpty()) {
+
+        if (metadata.getCombineFunction().isEmpty()) {
             method.getBody()
                     .append(newInstance(UnsupportedOperationException.class, constantString("Aggregation is not decomposable")))
                     .throwObject();
             return;
         }
+
         Scope scope = method.getScope();
         BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
@@ -645,6 +685,7 @@ public final class AccumulatorCompiler
         }
 
         Variable position = scope.declareVariable(int.class, "position");
+        Variable groupId = scope.declareVariable(long.class, "groupId");
         for (int i = 0; i < stateCount; i++) {
             FieldDefinition stateFactoryField = stateFieldAndDescriptors.get(i).getStateFactoryField();
             body.comment(format("scratchState_%s = stateFactory[%s].createSingleState();", i, i))
@@ -654,63 +695,83 @@ public final class AccumulatorCompiler
                     .putVariable(scratchStates.get(i));
         }
 
-        List<FieldDefinition> stateFields = stateFieldAndDescriptors.stream()
-                .map(StateFieldAndDescriptor::getStateField)
-                .collect(toImmutableList());
-
         if (grouped) {
-            generateEnsureCapacity(scope, stateFields, body);
+            generateEnsureCapacity(scope, stateFieldAndDescriptors, body);
         }
 
         BytecodeBlock loopBody = new BytecodeBlock();
 
         loopBody.comment("combine(state_0, state_1, ... scratchState_0, scratchState_1, ... lambda_0, lambda_1, ...)");
-        for (FieldDefinition stateField : stateFields) {
-            if (grouped) {
-                Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
-                loopBody.append(thisVariable.getField(stateField).invoke("setGroupId", void.class, groupIdsBlock.invoke("getGroupId", long.class, position)));
-            }
-            loopBody.append(thisVariable.getField(stateField));
+
+        if (grouped) {
+            generateSetGroupIdFromGroupIdsBlock(scope, stateFieldAndDescriptors, loopBody);
         }
+
         for (int i = 0; i < stateCount; i++) {
             FieldDefinition stateSerializerField = stateFieldAndDescriptors.get(i).getStateSerializerField();
-            loopBody.append(thisVariable.getField(stateSerializerField).invoke("deserialize", void.class, block.get(i), position, scratchStates.get(i).cast(AccumulatorState.class)));
+
+            if(grouped) {
+                loopBody.append(thisVariable.getField(stateSerializerField).invoke("deserialize", void.class, scope.getVariable("groupIdsBlock").invoke("getGroupId", long.class, position),  block.get(i), position, scratchStates.get(i).cast(AccumulatorState.class)));
+            } else {
+                loopBody.append(thisVariable.getField(stateSerializerField).invoke("deserialize", void.class, constantLong(0),  block.get(i), position, scratchStates.get(i).cast(AccumulatorState.class)));
+            }
+        }
+
+        MethodHandle combine = metadata.getCombineFunction().get();
+
+        for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
+            loopBody.append(thisVariable.getField(stateFieldAndDescriptor.stateField));
+        }
+
+        for (int i = 0; i < stateCount; i++) {
             loopBody.append(scratchStates.get(i));
         }
+
         for (FieldDefinition lambdaProviderField : lambdaProviderFields) {
             loopBody.append(scope.getThis().getField(lambdaProviderField)
                     .invoke("get", Object.class));
         }
-        loopBody.append(invoke(callSiteBinder.bind(combineFunction.get()), "combine"));
 
-        if (grouped) {
-            // skip rows with null group id
-            IfStatement ifStatement = new IfStatement("if (!groupIdsBlock.isNull(position))")
-                    .condition(not(scope.getVariable("groupIdsBlock").invoke("isNull", boolean.class, position)))
-                    .ifTrue(loopBody);
-
-            loopBody = new BytecodeBlock().append(ifStatement);
+        if(isGroupIdExplicit(metadata)) {
+            if(grouped) {
+                loopBody.append(scope.getVariable("groupIdsBlock").invoke("getGroupId", long.class, position));
+            } else {
+                loopBody.append(constantLong(0));
+            }
         }
+
+        loopBody.append(invoke(callSiteBinder.bind(combine), "combine"));
+//
+//        if (grouped) {
+//            // skip rows with null group id
+//            IfStatement ifStatement = new IfStatement("if (!groupIdsBlock.isNull(position))")
+//                    .condition(not(scope.getVariable("groupIdsBlock").invoke("isNull", boolean.class, position)))
+//                    .ifTrue(loopBody);
+//
+//            loopBody = new BytecodeBlock().append(ifStatement);
+//        }
 
         body.append(generateBlockNonNullPositionForLoop(scope, position, loopBody))
                 .ret();
     }
 
-    private static void generateSetGroupIdFromGroupIdsBlock(Scope scope, List<FieldDefinition> stateFields, BytecodeBlock block)
+    private static void generateSetGroupIdFromGroupIdsBlock(Scope scope, List<StateFieldAndDescriptor> stateFieldAndDescriptors, BytecodeBlock block)
     {
         Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
         Variable position = scope.getVariable("position");
-        for (FieldDefinition stateField : stateFields) {
-            BytecodeExpression state = scope.getThis().getField(stateField);
-            block.append(state.invoke("setGroupId", void.class, groupIdsBlock.invoke("getGroupId", long.class, position)));
+        for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
+            if(!isStateGroupIdParamExplicit(stateFieldAndDescriptor.accumulatorStateDescriptor)) {
+                BytecodeExpression state = scope.getThis().getField(stateFieldAndDescriptor.stateField);
+                block.append(state.invoke("setGroupId", void.class, groupIdsBlock.invoke("getGroupId", long.class, position)));
+            }
         }
     }
 
-    private static void generateEnsureCapacity(Scope scope, List<FieldDefinition> stateFields, BytecodeBlock block)
+    private static void generateEnsureCapacity(Scope scope, List<StateFieldAndDescriptor> stateFieldAndDescriptors, BytecodeBlock block)
     {
         Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
-        for (FieldDefinition stateField : stateFields) {
-            BytecodeExpression state = scope.getThis().getField(stateField);
+        for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
+            BytecodeExpression state = scope.getThis().getField(stateFieldAndDescriptor.stateField);
             block.append(state.invoke("ensureCapacity", void.class, groupIdsBlock.invoke("getGroupCount", long.class)));
         }
     }
@@ -780,10 +841,10 @@ public final class AccumulatorCompiler
         if (stateFieldAndDescriptors.size() == 1) {
             BytecodeExpression stateSerializer = thisVariable.getField(getOnlyElement(stateFieldAndDescriptors).getStateSerializerField());
             BytecodeExpression state = thisVariable.getField(getOnlyElement(stateFieldAndDescriptors).getStateField());
-
-            body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)))
-                    .append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), out))
-                    .ret();
+            if (!isStateGroupIdParamExplicit(stateFieldAndDescriptors.get(0).accumulatorStateDescriptor)) {
+                body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)));
+            }
+            body.append(stateSerializer.invoke("serialize", void.class, groupId.cast(long.class), state.cast(AccumulatorState.class), out)).ret();
         }
         else {
             Variable rowBuilder = method.getScope().declareVariable(BlockBuilder.class, "rowBuilder");
@@ -793,8 +854,10 @@ public final class AccumulatorCompiler
                 BytecodeExpression stateSerializer = thisVariable.getField(stateFieldAndDescriptor.getStateSerializerField());
                 BytecodeExpression state = thisVariable.getField(stateFieldAndDescriptor.getStateField());
 
-                body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)))
-                        .append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder));
+                if (!isStateGroupIdParamExplicit(stateFieldAndDescriptor.accumulatorStateDescriptor)) {
+                    body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)));
+                }
+                body.append(stateSerializer.invoke("serialize", void.class, groupId.cast(long.class), state.cast(AccumulatorState.class), rowBuilder));
             }
             body.append(out.invoke("closeEntry", BlockBuilder.class).pop())
                     .ret();
@@ -824,7 +887,7 @@ public final class AccumulatorCompiler
             BytecodeExpression stateSerializer = thisVariable.getField(getOnlyElement(stateFieldAndDescriptors).getStateSerializerField());
             BytecodeExpression state = thisVariable.getField(getOnlyElement(stateFieldAndDescriptors).getStateField());
 
-            body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), out))
+            body.append(stateSerializer.invoke("serialize", void.class, constantLong(0), state.cast(AccumulatorState.class), out))
                     .ret();
         }
         else {
@@ -834,7 +897,7 @@ public final class AccumulatorCompiler
             for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
                 BytecodeExpression stateSerializer = thisVariable.getField(stateFieldAndDescriptor.getStateSerializerField());
                 BytecodeExpression state = thisVariable.getField(stateFieldAndDescriptor.getStateField());
-                body.append(stateSerializer.invoke("serialize", void.class, state.cast(AccumulatorState.class), rowBuilder));
+                body.append(stateSerializer.invoke("serialize", void.class, constantLong(0), state.cast(AccumulatorState.class), rowBuilder));
             }
             body.append(out.invoke("closeEntry", BlockBuilder.class).pop())
                     .ret();
@@ -843,30 +906,34 @@ public final class AccumulatorCompiler
 
     private static void generateGroupedEvaluateFinal(
             ClassDefinition definition,
-            List<FieldDefinition> stateFields,
+            List<StateFieldAndDescriptor> stateFieldAndDescriptors,
             MethodHandle outputFunction,
-            CallSiteBinder callSiteBinder)
+            CallSiteBinder callSiteBinder,
+            AggregationMetadata metadata)
     {
         Parameter groupId = arg("groupId", int.class);
         Parameter out = arg("out", BlockBuilder.class);
         MethodDefinition method = definition.declareMethod(a(PUBLIC), "evaluateFinal", type(void.class), groupId, out);
-
         BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
 
         List<BytecodeExpression> states = new ArrayList<>();
 
-        for (FieldDefinition stateField : stateFields) {
-            BytecodeExpression state = thisVariable.getField(stateField);
-            body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)));
+        for (StateFieldAndDescriptor stateFieldAndDescriptor : stateFieldAndDescriptors) {
+            BytecodeExpression state = thisVariable.getField(stateFieldAndDescriptor.stateField);
+            if (!isStateGroupIdParamExplicit(stateFieldAndDescriptor.accumulatorStateDescriptor)) {
+                body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)));
+            }
             states.add(state);
         }
 
         body.comment("output(state_0, state_1, ..., out)");
         states.forEach(body::append);
         body.append(out);
+        if (isGroupIdExplicit(metadata)) {
+            body.append(groupId.cast(long.class));
+        }
         body.append(invoke(callSiteBinder.bind(outputFunction), "output"));
-
         body.ret();
     }
 
@@ -874,7 +941,8 @@ public final class AccumulatorCompiler
             ClassDefinition definition,
             List<FieldDefinition> stateFields,
             MethodHandle outputFunction,
-            CallSiteBinder callSiteBinder)
+            CallSiteBinder callSiteBinder,
+            AggregationMetadata metadata)
     {
         Parameter out = arg("out", BlockBuilder.class);
         MethodDefinition method = definition.declareMethod(
@@ -896,6 +964,9 @@ public final class AccumulatorCompiler
         body.comment("output(state_0, state_1, ..., out)");
         states.forEach(body::append);
         body.append(out);
+        if (isGroupIdExplicit(metadata)) {
+            body.append(constantLong(0));
+        }
         body.append(invoke(callSiteBinder.bind(outputFunction), "output"));
 
         body.ret();
@@ -949,6 +1020,7 @@ public final class AccumulatorCompiler
             AccumulatorStateDescriptor<?> accumulatorStateDescriptor = fieldAndDescriptor.getAccumulatorStateDescriptor();
             body.append(thisVariable.setField(
                     fieldAndDescriptor.getStateSerializerField(),
+                    // nize zmienic na lepszy podtyp?
                     loadConstant(callSiteBinder, accumulatorStateDescriptor.getSerializer(), AccumulatorStateSerializer.class)));
             body.append(generateRequireNotNull(thisVariable, fieldAndDescriptor.getStateSerializerField()));
 
@@ -1055,7 +1127,8 @@ public final class AccumulatorCompiler
                 metadata.getCombineFunction().map(combineFunction -> castStateParameters(combineFunction, stateParameterCount * 2, lambdaParameterCount)),
                 castStateParameters(metadata.getOutputFunction(), stateParameterCount, 0),
                 metadata.getAccumulatorStateDescriptors(),
-                metadata.getLambdaInterfaces());
+                metadata.getLambdaInterfaces(),
+                metadata.isExplicitGroupId());
     }
 
     private static MethodHandle castStateParameters(MethodHandle inputFunction, int stateParameterCount, int lambdaParameterCount)
