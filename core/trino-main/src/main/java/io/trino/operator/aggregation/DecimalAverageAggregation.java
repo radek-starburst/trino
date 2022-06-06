@@ -58,7 +58,7 @@ public final class DecimalAverageAggregation
     public static void inputShortDecimal(
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @BlockPosition @SqlType(value = "decimal(p, s)", nativeContainerType = long.class) Block block,
             @BlockIndex int position,
             @GroupId long groupId)
@@ -79,8 +79,10 @@ public final class DecimalAverageAggregation
                 decimal,
                 decimalOffset);
 
-        overflow += overflowState.getValue(groupId);
-        overflowState.setValue(groupId, overflow);
+        if(overflow != 0) {
+            overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
+            overflowState.setNull(groupId, false);
+        }
     }
 
     @InputFunction
@@ -88,7 +90,7 @@ public final class DecimalAverageAggregation
     public static void inputLongDecimal(
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @BlockPosition @SqlType(value = "decimal(p, s)", nativeContainerType = Int128.class) Block block,
             @BlockIndex int position,
             @GroupId long groupId)
@@ -108,19 +110,21 @@ public final class DecimalAverageAggregation
                 rightLow,
                 decimal,
                 decimalOffset);
-
-        overflow += overflowState.getValue(groupId);
-        overflowState.setValue(groupId, overflow);
+        // To mozna oczywiscie poprawic, etc
+        if(overflow != 0) {
+            overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
+            overflowState.setNull(groupId, false);
+        }
     }
 
     @CombineFunction
     public static void combine(
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @AggregationState Int128State otherDecimalState,
             @AggregationState LongState otherCounterState,
-            @AggregationState LongState otherOverflowState,
+            @AggregationState NullableLongState otherOverflowState,
             @GroupId long groupId
     )
     {
@@ -136,8 +140,13 @@ public final class DecimalAverageAggregation
             otherDecimal[otherDecimalOffset + 1],
             decimal,
             decimalOffset);
+
         counterState.setValue(groupId, counterState.getValue(groupId) + otherCounterState.getValue(groupId));
-        overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId));
+
+        if (overflow != 0 || !otherOverflowState.isNull(groupId)) {
+            overflowState.setValue(groupId, overflow + overflowState.getValue(groupId) + otherOverflowState.getValue(groupId));
+            overflowState.setNull(groupId, false);
+        }
     }
 
     @OutputFunction("decimal(p,s)")
@@ -145,7 +154,7 @@ public final class DecimalAverageAggregation
             @TypeParameter("decimal(p,s)") Type type,
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             BlockBuilder out,
             @GroupId long groupId)
     {
@@ -164,7 +173,7 @@ public final class DecimalAverageAggregation
     }
 
     @VisibleForTesting
-    public static Int128 average(long groupId, Int128State decimalState, LongState counterState, LongState overflowState, DecimalType type)
+    public static Int128 average(long groupId, Int128State decimalState, LongState counterState, NullableLongState overflowState, DecimalType type)
     {
         long[] decimal = decimalState.getArray(groupId);
         int decimalOffset = decimalState.getArrayOffset(groupId);
