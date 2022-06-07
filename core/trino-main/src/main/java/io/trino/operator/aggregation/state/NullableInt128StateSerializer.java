@@ -23,8 +23,8 @@ import io.trino.spi.type.Type;
 
 import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 
-public class Int128StateSerializer
-        implements AccumulatorStateSerializer<Int128State>
+public class NullableInt128StateSerializer
+        implements AccumulatorStateSerializer<NullableInt128State>
 {
     @Override
     public Type getSerializedType()
@@ -33,19 +33,29 @@ public class Int128StateSerializer
     }
 
     @Override
-    public void serialize(@GroupId long groupId, Int128State state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, NullableInt128State state, BlockBuilder out)
     {
-        long[] decimal = state.getArray(groupId);
-        int offset = state.getArrayOffset(groupId);
-        out.writeLong(decimal[offset]).writeLong(decimal[offset + 1]).closeEntry();
+        if (state.isNotNull(groupId)) {
+            long[] decimal = state.getArray(groupId);
+            int offset = state.getArrayOffset(groupId);
+            out.writeLong(decimal[offset]).writeLong(decimal[offset + 1]).closeEntry();
+        } else {
+            out.appendNull();
+        }
     }
 
     @Override
-    public void deserialize(@GroupId long groupId, Block block, int index, Int128State state)
+    public void deserialize(@GroupId long groupId, Block block, int index, NullableInt128State state)
     {
         long[] decimal = state.getArray(groupId);
         int offset = state.getArrayOffset(groupId);
-        decimal[offset] = block.getLong(index, 0);
-        decimal[offset + 1] = block.getLong(index, SIZE_OF_LONG);
+
+        if (!block.isNull(index)) {
+            decimal[offset] = block.getLong(index, 0);
+            decimal[offset + 1] = block.getLong(index, SIZE_OF_LONG);
+            state.setIsNotNull(groupId, true);
+        } else {
+            state.setIsNotNull(groupId, false);
+        }
     }
 }

@@ -43,11 +43,9 @@ public class Int128StateSerializer
     @Override
     public void deserialize(@GroupId long groupId, Block block, int index, Int128State state)
     {
-        if(!block.isNull(index)) {
-            long[] decimal = state.getArray(groupId);
-            int offset = state.getArrayOffset(groupId);
-            decimal[offset] = block.getLong(index, 0);
-            decimal[offset + 1] = block.getLong(index, SIZE_OF_LONG);
-        }
+        long[] decimal = state.getArray(groupId);
+        int offset = state.getArrayOffset(groupId);
+        decimal[offset] = block.getLong(index, 0);
+        decimal[offset + 1] = block.getLong(index, SIZE_OF_LONG);
     }
 }
