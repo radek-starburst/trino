@@ -58,7 +58,7 @@ public final class DecimalAverageAggregation
     public static void inputShortDecimal(
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @BlockPosition @SqlType(value = "decimal(p, s)", nativeContainerType = long.class) Block block,
             @BlockIndex int position,
             @GroupId long groupId)
@@ -81,6 +81,7 @@ public final class DecimalAverageAggregation
 
         if (overflow != 0) {
             overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
+            overflowState.setNull(groupId, false);
         }
     }
 
@@ -89,7 +90,7 @@ public final class DecimalAverageAggregation
     public static void inputLongDecimal(
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @BlockPosition @SqlType(value = "decimal(p, s)", nativeContainerType = Int128.class) Block block,
             @BlockIndex int position,
             @GroupId long groupId)
@@ -112,6 +113,7 @@ public final class DecimalAverageAggregation
 
         if (overflow != 0) {
             overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
+            overflowState.setNull(groupId, false);
         }
     }
 
@@ -119,12 +121,11 @@ public final class DecimalAverageAggregation
     public static void combine(
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @AggregationState Int128State otherDecimalState,
             @AggregationState LongState otherCounterState,
-            @AggregationState LongState otherOverflowState,
-            @GroupId long groupId
-    )
+            @AggregationState NullableLongState otherOverflowState,
+            @GroupId long groupId)
     {
         long[] decimal = decimalState.getArray(groupId);
         int decimalOffset = decimalState.getArrayOffset(groupId);
@@ -140,8 +141,10 @@ public final class DecimalAverageAggregation
             decimalOffset);
         counterState.setValue(groupId, counterState.getValue(groupId) + otherCounterState.getValue(groupId));
 
-        if(overflow != 0 || otherOverflowState.getValue(groupId) != 0) {
-            overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId));
+        int isOtherOverflowNull = otherOverflowState.isNull(groupId) ? 1 : 0;
+        if(overflow != 0 || isOtherOverflowNull == 0) {
+            overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId) * isOtherOverflowNull);
+            overflowState.setNull(groupId, false);
         }
     }
 
@@ -150,7 +153,7 @@ public final class DecimalAverageAggregation
             @TypeParameter("decimal(p,s)") Type type,
             @AggregationState Int128State decimalState,
             @AggregationState LongState counterState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             BlockBuilder out,
             @GroupId long groupId)
     {
@@ -169,7 +172,7 @@ public final class DecimalAverageAggregation
     }
 
     @VisibleForTesting
-    public static Int128 average(long groupId, Int128State decimalState, LongState counterState, LongState overflowState, DecimalType type)
+    public static Int128 average(long groupId, Int128State decimalState, LongState counterState, NullableLongState overflowState, DecimalType type)
     {
         long[] decimal = decimalState.getArray(groupId);
         int decimalOffset = decimalState.getArrayOffset(groupId);

@@ -16,15 +16,7 @@ package io.trino.operator.aggregation;
 import io.trino.operator.aggregation.state.NullableLongState;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.BlockIndex;
-import io.trino.spi.function.BlockPosition;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.SqlType;
-import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.*;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.StandardTypes;
 
@@ -37,31 +29,31 @@ public final class SumDataSizeForStats
 
     @InputFunction
     @TypeParameter("T")
-    public static void input(@AggregationState NullableLongState state, @BlockPosition @SqlType("T") Block block, @BlockIndex int index)
+    public static void input(@AggregationState NullableLongState state, @BlockPosition @SqlType("T") Block block, @BlockIndex int index, @GroupId long groupId)
     {
-        update(state, block.getEstimatedDataSizeForStats(index));
+        update(state, block.getEstimatedDataSizeForStats(index), groupId);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState NullableLongState state, @AggregationState NullableLongState otherState)
+    public static void combine(@AggregationState NullableLongState state, @AggregationState NullableLongState otherState, @GroupId long groupId)
     {
-        update(state, otherState.getValue());
+        update(state, otherState.getValue(groupId), groupId);
     }
 
-    private static void update(NullableLongState state, long size)
+    private static void update(NullableLongState state, long size, long groupId)
     {
-        if (state.isNull()) {
-            state.setNull(false);
-            state.setValue(size);
+        if (state.isNull(groupId)) {
+            state.setNull(groupId, false);
+            state.setValue(groupId, size);
         }
         else {
-            state.setValue(state.getValue() + size);
+            state.setValue(groupId, state.getValue(groupId) + size);
         }
     }
 
     @OutputFunction(StandardTypes.BIGINT)
-    public static void output(@AggregationState NullableLongState state, BlockBuilder out)
+    public static void output(@AggregationState NullableLongState state, BlockBuilder out, @GroupId long groupId)
     {
-        NullableLongState.write(BigintType.BIGINT, state, out);
+        NullableLongState.write(groupId, BigintType.BIGINT, state, out);
     }
 }

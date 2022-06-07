@@ -67,7 +67,7 @@ import static org.testng.Assert.assertEquals;
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkDecimalAggregation
 {
-    private static final int ELEMENT_COUNT = 100_000;
+    private static final int ELEMENT_COUNT = 1_000_000;
 
     @Benchmark
     @OperationsPerInvocation(ELEMENT_COUNT)
@@ -241,11 +241,11 @@ public class BenchmarkDecimalAggregation
                 options
                         .output(Path.of(outputDir, "stdout.log").toString())
                         .jvmArgsAppend(
-                                "-Xmx32g",
-                                "-XX:+UnlockDiagnosticVMOptions",
-                                "-XX:+PrintAssembly",
-                                "-XX:+LogCompilation",
-                                "-XX:+TraceClassLoading");
+                                "-Xmx32g");
+//                                "-XX:+UnlockDiagnosticVMOptions",
+//                                "-XX:+PrintAssembly",
+//                                "-XX:+LogCompilation",
+//                                "-XX:+TraceClassLoading");
         Function<ChainedOptionsBuilder, ChainedOptionsBuilder> profilers = system.equals("Linux")
                 ? (options) ->
                 options
@@ -258,10 +258,10 @@ public class BenchmarkDecimalAggregation
                         .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
 
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
-                .includeMethod("benchmarkEvaluateIntermediate")
-                .withOptions(optionsBuilder ->
-                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
-                                .build())
+//                .includeMethod("benchmarkEvaluateIntermediate")
+//                .withOptions(optionsBuilder ->
+//                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
+//                                .build())
                 .run();
     }
 }

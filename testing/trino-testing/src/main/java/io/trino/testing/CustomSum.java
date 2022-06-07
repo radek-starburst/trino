@@ -32,24 +32,24 @@ public final class CustomSum
     @InputFunction
     public static void input(@AggregationState NullableLongState state, @SqlType(StandardTypes.BIGINT) long value)
     {
-        state.setValue(state.getValue() + value);
-        state.setNull(false);
+        state.setValue(0, state.getValue(0) + value);
+        state.setNull(0, false);
     }
 
     @CombineFunction
     public static void combine(@AggregationState NullableLongState state, @AggregationState NullableLongState otherState)
     {
-        if (state.isNull()) {
-            state.set(otherState);
+        if (state.isNull(0)) {
+            state.set(0, otherState);
             return;
         }
 
-        state.setValue(state.getValue() + otherState.getValue());
+        state.setValue(0, state.getValue(0) + otherState.getValue(0));
     }
 
     @OutputFunction(StandardTypes.BIGINT)
     public static void output(@AggregationState NullableLongState state, BlockBuilder out)
     {
-        NullableLongState.write(BigintType.BIGINT, state, out);
+        NullableLongState.write(0, BigintType.BIGINT, state, out);
     }
 }

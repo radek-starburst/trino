@@ -75,22 +75,22 @@ public class TestCountNullAggregation
         public static void input(@AggregationState NullableLongState state, @BlockPosition @NullablePosition @SqlType(StandardTypes.BIGINT) Block block, @BlockIndex int position)
         {
             if (block.isNull(position)) {
-                state.setValue(state.getValue() + 1);
+                state.setValue(0, state.getValue(0) + 1);
             }
-            state.setNull(false);
+            state.setNull(0, false);
         }
 
         @CombineFunction
         public static void combine(@AggregationState NullableLongState state, @AggregationState NullableLongState scratchState)
         {
-            state.setValue(state.getValue() + scratchState.getValue());
-            state.setNull(state.isNull() && scratchState.isNull());
+            state.setValue(0, state.getValue(0) + scratchState.getValue(0));
+            state.setNull(0, state.isNull(0) && scratchState.isNull(0));
         }
 
         @OutputFunction(StandardTypes.BIGINT)
         public static void output(@AggregationState NullableLongState state, BlockBuilder out)
         {
-            NullableLongState.write(BIGINT, state, out);
+            NullableLongState.write(0, BIGINT, state, out);
         }
     }
 

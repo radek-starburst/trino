@@ -33,11 +33,11 @@ public class NullableLongStateSerializer
     @Override
     public void serialize(@GroupId long groupId, NullableLongState state, BlockBuilder out)
     {
-        if (state.isNull()) {
+        if (state.isNull(groupId)) {
             out.appendNull();
         }
         else {
-            BIGINT.writeLong(out, state.getValue());
+            BIGINT.writeLong(out, state.getValue(groupId));
         }
     }
 
@@ -45,11 +45,11 @@ public class NullableLongStateSerializer
     public void deserialize(@GroupId long groupId, Block block, int index, NullableLongState state)
     {
         if (block.isNull(index)) {
-            state.setNull(true);
+            state.setNull(groupId, true);
         }
         else {
-            state.setNull(false);
-            state.setValue(BIGINT.getLong(block, index));
+            state.setNull(groupId, false);
+            state.setValue(groupId, BIGINT.getLong(block, index));
         }
     }
 }

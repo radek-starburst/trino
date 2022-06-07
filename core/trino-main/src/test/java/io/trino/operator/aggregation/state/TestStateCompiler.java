@@ -67,20 +67,20 @@ public class TestStateCompiler
         NullableLongState state = factory.createSingleState();
         NullableLongState deserializedState = factory.createSingleState();
 
-        state.setValue(2);
-        state.setNull(false);
+        state.setValue(0, 2);
+        state.setNull(0, false);
 
         BlockBuilder builder = BIGINT.createBlockBuilder(null, 2);
         serializer.serialize(0, state, builder);
-        state.setNull(true);
+        state.setNull(0, true);
         serializer.serialize(0,state, builder);
 
         Block block = builder.build();
 
         assertFalse(block.isNull(0));
-        assertEquals(BIGINT.getLong(block, 0), state.getValue());
+        assertEquals(BIGINT.getLong(block, 0), state.getValue(0));
         serializer.deserialize(0, block, 0, deserializedState);
-        assertEquals(deserializedState.getValue(), state.getValue());
+        assertEquals(deserializedState.getValue(0), state.getValue(0));
 
         assertTrue(block.isNull(1));
     }
