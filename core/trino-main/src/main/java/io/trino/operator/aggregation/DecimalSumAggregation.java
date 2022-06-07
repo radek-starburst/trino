@@ -41,13 +41,12 @@ public final class DecimalSumAggregation
     @InputFunction
     @LiteralParameters({"p", "s"})
     public static void inputShortDecimal(
-            @AggregationState Int128State decimalState,
+            @AggregationState NullableInt128State decimalState,
             @AggregationState LongState overflowState,
-            @AggregationState BooleanState isEmptyState,
             @SqlType("decimal(p,s)") long rightLow,
             @GroupId long groupId)
     {
-        isEmptyState.setValue(groupId, true);
+        decimalState.setIsNotNull(groupId, true);
 
         long[] decimal = decimalState.getArray(groupId);
         int offset = decimalState.getArrayOffset(groupId);
@@ -70,13 +69,12 @@ public final class DecimalSumAggregation
     @InputFunction
     @LiteralParameters({"p", "s"})
     public static void inputLongDecimal(
-            @AggregationState Int128State decimalState,
+            @AggregationState NullableInt128State decimalState,
             @AggregationState LongState overflowState,
-            @AggregationState BooleanState isEmptyState,
             @BlockPosition @SqlType(value = "decimal(p,s)", nativeContainerType = Int128.class) Block block,
             @BlockIndex int position,
             @GroupId long groupId) {
-        isEmptyState.setValue(groupId, true);
+        decimalState.setIsNotNull(groupId, true);
 
         long[] decimal = decimalState.getArray(groupId);
         int offset = decimalState.getArrayOffset(groupId);
@@ -99,18 +97,15 @@ public final class DecimalSumAggregation
 
     @CombineFunction
     public static void combine(
-            @AggregationState Int128State decimalState,
+            @AggregationState NullableInt128State decimalState,
             @AggregationState LongState overflowState,
-            @AggregationState BooleanState isEmptyState,
-            @AggregationState Int128State otherDecimalState,
+            @AggregationState NullableInt128State otherDecimalState,
             @AggregationState LongState otherOverflowState,
-            @AggregationState BooleanState otherIsEmptyState,
             @GroupId long groupId)
     {
-        if (!otherIsEmptyState.getValue(groupId)) {
+        if (!otherDecimalState.isNotNull(groupId)) {
             return;
         }
-
         long[] decimal = decimalState.getArray(groupId);
         int decimalOffset = decimalState.getArrayOffset(groupId);
         long[] otherDecimal = otherDecimalState.getArray(groupId);
@@ -124,7 +119,7 @@ public final class DecimalSumAggregation
                 decimal,
                 decimalOffset);
 
-        isEmptyState.setValue(groupId, true);
+        decimalState.setIsNotNull(groupId, true);
 
         if(overflow != 0 || otherOverflowState.getValue(groupId) != 0) {
             overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId));
@@ -133,13 +128,12 @@ public final class DecimalSumAggregation
 
     @OutputFunction("decimal(38,s)")
     public static void outputLongDecimal(
-            @AggregationState Int128State decimalState,
+            @AggregationState NullableInt128State decimalState,
             @AggregationState LongState overflowState,
-            @AggregationState BooleanState isEmptyState,
             BlockBuilder out,
             @GroupId long groupId)
     {
-        if (isEmptyState.getValue(groupId)) {
+        if (decimalState.isNotNull(groupId)) {
             if (overflowState.getValue(groupId) != 0) {
                 throw new ArithmeticException("Decimal overflow");
             }

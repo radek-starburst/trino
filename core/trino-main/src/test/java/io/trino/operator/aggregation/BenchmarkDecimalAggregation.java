@@ -249,19 +249,19 @@ public class BenchmarkDecimalAggregation
         Function<ChainedOptionsBuilder, ChainedOptionsBuilder> profilers = system.equals("Linux")
                 ? (options) ->
                 options
-//                        .addProfiler(LinuxPerfProfiler.class)
-//                        .addProfiler(LinuxPerfNormProfiler.class)
-//                        .addProfiler(LinuxPerfAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir))
+                        .addProfiler(LinuxPerfProfiler.class)
+                        .addProfiler(LinuxPerfNormProfiler.class)
+                        .addProfiler(LinuxPerfAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir))
                 :  (options) ->
                 options
                         .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", outputDir))
                         .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
 
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
-//                .includeMethod("benchmarkEvaluateIntermediate")
-                .withOptions(optionsBuilder ->
-                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
-                                .build())
+//                .includeMethod("benchmarkAddInput")
+//                .withOptions(optionsBuilder ->
+//                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
+//                                .build())
                 .run();
     }
 }

@@ -17,11 +17,15 @@ import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateMetadata;
 import io.trino.spi.function.GroupId;
 
-@AccumulatorStateMetadata(stateFactoryClass = Int128StateFactory.class, stateSerializerClass = Int128StateSerializer.class)
-public interface Int128State
+@AccumulatorStateMetadata(stateFactoryClass = NullableInt128StateFactory.class, stateSerializerClass = NullableInt128StateSerializer.class)
+public interface NullableInt128State
         extends AccumulatorState
 {
     long[] getArray(@GroupId long groupId);
 
     int getArrayOffset(@GroupId long groupId);
+
+    boolean isNotNull(@GroupId long groupId);
+
+    void setIsNotNull(@GroupId long groupId, boolean isNotNull);
 }

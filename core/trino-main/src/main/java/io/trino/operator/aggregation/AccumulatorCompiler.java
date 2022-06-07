@@ -64,7 +64,6 @@ import static io.airlift.bytecode.expression.BytecodeExpressions.constantString;
 import static io.airlift.bytecode.expression.BytecodeExpressions.invokeDynamic;
 import static io.airlift.bytecode.expression.BytecodeExpressions.invokeStatic;
 import static io.airlift.bytecode.expression.BytecodeExpressions.newInstance;
-import static io.airlift.bytecode.expression.BytecodeExpressions.not;
 import static io.trino.sql.gen.Bootstrap.BOOTSTRAP_METHOD;
 import static io.trino.sql.gen.BytecodeUtils.invoke;
 import static io.trino.sql.gen.BytecodeUtils.loadConstant;
@@ -260,6 +259,7 @@ public final class AccumulatorCompiler
         // Generate methods
         generateCopy(definition, WindowAccumulator.class);
         generateAddOrRemoveInputWindowIndex(
+                metadata,
                 definition,
                 stateFields,
                 argumentNullable,
@@ -269,6 +269,7 @@ public final class AccumulatorCompiler
                 callSiteBinder);
         metadata.getRemoveInputFunction().ifPresent(
                 removeInputFunction -> generateAddOrRemoveInputWindowIndex(
+                        metadata,
                         definition,
                         stateFields,
                         argumentNullable,
@@ -392,6 +393,7 @@ public final class AccumulatorCompiler
     }
 
     private static void generateAddOrRemoveInputWindowIndex(
+            AggregationMetadata metadata,
             ClassDefinition definition,
             List<FieldDefinition> stateField,
             List<Boolean> argumentNullable,
@@ -422,6 +424,7 @@ public final class AccumulatorCompiler
                 generatedFunctionName,
                 binding.getType(),
                 getInvokeFunctionOnWindowIndexParameters(
+                        metadata,
                         scope,
                         argumentNullable.size(),
                         lambdaProviderFields,
@@ -456,6 +459,7 @@ public final class AccumulatorCompiler
     }
 
     private static List<BytecodeExpression> getInvokeFunctionOnWindowIndexParameters(
+            AggregationMetadata metadata,
             Scope scope,
             int inputParameterCount,
             List<FieldDefinition> lambdaProviderFields,
@@ -484,6 +488,11 @@ public final class AccumulatorCompiler
         for (FieldDefinition lambdaProviderField : lambdaProviderFields) {
             expressions.add(scope.getThis().getField(lambdaProviderField)
                     .invoke("get", Object.class));
+        }
+
+        if (isGroupIdExplicit(metadata)) {
+            // TODO: add mock groupId
+            expressions.add(constantLong(0));
         }
 
         return expressions;
