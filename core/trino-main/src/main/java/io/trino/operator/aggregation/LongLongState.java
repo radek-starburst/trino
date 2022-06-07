@@ -15,25 +15,26 @@ package io.trino.operator.aggregation;
 
 import io.trino.operator.aggregation.state.InitialBooleanValue;
 import io.trino.spi.function.AccumulatorState;
+import io.trino.spi.function.GroupId;
 
 public interface LongLongState
         extends AccumulatorState
 {
-    long getFirst();
+    long getFirst(@GroupId long groupId);
 
-    void setFirst(long first);
-
-    @InitialBooleanValue(true)
-    boolean isFirstNull();
-
-    void setFirstNull(boolean firstNull);
-
-    long getSecond();
-
-    void setSecond(long second);
+    void setFirst(@GroupId long groupId, long first);
 
     @InitialBooleanValue(true)
-    boolean isSecondNull();
+    boolean isFirstNull(@GroupId long groupId);
 
-    void setSecondNull(boolean secondNull);
+    void setFirstNull(@GroupId long groupId, boolean firstNull);
+
+    long getSecond(@GroupId long groupId);
+
+    void setSecond(@GroupId long groupId, long second);
+
+    @InitialBooleanValue(true)
+    boolean isSecondNull(@GroupId long groupId);
+
+    void setSecondNull(@GroupId long groupId, boolean secondNull);
 }

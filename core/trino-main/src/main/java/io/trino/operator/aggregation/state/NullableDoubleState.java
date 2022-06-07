@@ -16,35 +16,35 @@ package io.trino.operator.aggregation.state;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateMetadata;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 @AccumulatorStateMetadata(stateSerializerClass = NullableDoubleStateSerializer.class)
 public interface NullableDoubleState
-        extends AccumulatorState, NullableState
+        extends AccumulatorState
 {
-    double getValue();
+    double getValue(@GroupId long groupId);
 
-    void setValue(double value);
+    void setValue(@GroupId long groupId, double value);
 
-    @Override
     @InitialBooleanValue(true)
-    boolean isNull();
+    boolean isNull(@GroupId long groupId);
 
-    void setNull(boolean value);
+    void setNull(@GroupId long groupId, boolean value);
 
-    default void set(NullableDoubleState state)
+    default void set(@GroupId long groupId, NullableDoubleState state)
     {
-        setValue(state.getValue());
-        setNull(state.isNull());
+        setValue(groupId, state.getValue(groupId));
+        setNull(groupId, state.isNull(groupId));
     }
 
-    static void write(Type type, NullableDoubleState state, BlockBuilder out)
+    static void write(Type type, NullableDoubleState state, BlockBuilder out, @GroupId long groupId)
     {
-        if (state.isNull()) {
+        if (state.isNull(groupId)) {
             out.appendNull();
         }
         else {
-            type.writeDouble(out, state.getValue());
+            type.writeDouble(out, state.getValue(groupId));
         }
     }
 }

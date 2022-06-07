@@ -33,11 +33,11 @@ public class NullableDoubleStateSerializer
     @Override
     public void serialize(@GroupId long groupId, NullableDoubleState state, BlockBuilder out)
     {
-        if (state.isNull()) {
+        if (state.isNull(groupId)) {
             out.appendNull();
         }
         else {
-            DOUBLE.writeDouble(out, state.getValue());
+            DOUBLE.writeDouble(out, state.getValue(groupId));
         }
     }
 
@@ -45,11 +45,11 @@ public class NullableDoubleStateSerializer
     public void deserialize(@GroupId long groupId, Block block, int index, NullableDoubleState state)
     {
         if (block.isNull(index)) {
-            state.setNull(true);
+            state.setNull(groupId, true);
         }
         else {
-            state.setNull(false);
-            state.setValue(DOUBLE.getDouble(block, index));
+            state.setNull(groupId, false);
+            state.setValue(groupId, DOUBLE.getDouble(block, index));
         }
     }
 }

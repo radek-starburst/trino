@@ -45,7 +45,7 @@ public final class RealAverageAggregation
             @GroupId long groupId)
     {
         count.setValue(groupId, count.getValue(groupId) + 1);
-        sum.setValue(sum.getValue() + intBitsToFloat((int) value));
+        sum.setValue(groupId, sum.getValue(groupId) + intBitsToFloat((int) value));
     }
 
     @RemoveInputFunction
@@ -56,7 +56,7 @@ public final class RealAverageAggregation
             @GroupId long groupId)
     {
         count.setValue(groupId, count.getValue(groupId) - 1);
-        sum.setValue(sum.getValue() - intBitsToFloat((int) value));
+        sum.setValue(groupId, sum.getValue(groupId) - intBitsToFloat((int) value));
     }
 
     @CombineFunction
@@ -68,7 +68,7 @@ public final class RealAverageAggregation
             @GroupId long groupId)
     {
         count.setValue(groupId, count.getValue(groupId) + otherCount.getValue(groupId));
-        sum.setValue(sum.getValue() + otherSum.getValue());
+        sum.setValue(groupId, sum.getValue(groupId) + otherSum.getValue(groupId));
     }
 
     @OutputFunction("REAL")
@@ -82,7 +82,7 @@ public final class RealAverageAggregation
             out.appendNull();
         }
         else {
-            REAL.writeLong(out, floatToIntBits((float) (sum.getValue() / count.getValue(groupId))));
+            REAL.writeLong(out, floatToIntBits((float) (sum.getValue(groupId) / count.getValue(groupId))));
         }
     }
 }

@@ -62,8 +62,8 @@ import static org.testng.Assert.assertEquals;
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @Fork(1)
-@Warmup(iterations = 3)
-@Measurement(iterations = 6, time = 500, timeUnit = TimeUnit.MILLISECONDS)
+@Warmup(iterations = 6)
+@Measurement(iterations = 12, time = 1000, timeUnit = TimeUnit.MILLISECONDS)
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkDecimalAggregation
 {
@@ -239,13 +239,13 @@ public class BenchmarkDecimalAggregation
 
         Function<ChainedOptionsBuilder, ChainedOptionsBuilder> baseOptionsBuilderConsumer = (options) ->
                 options
-//                        .output(Path.of(outputDir, "stdout.log").toString())
+                        .output(Path.of(outputDir, "stdout.log").toString())
                         .jvmArgsAppend(
-                                "-Xmx32g");
-//                                "-XX:+UnlockDiagnosticVMOptions",
-//                                "-XX:+PrintAssembly",
-//                                "-XX:+LogCompilation",
-//                                "-XX:+TraceClassLoading");
+                                "-Xmx32g",
+                                "-XX:+UnlockDiagnosticVMOptions",
+                                "-XX:+PrintAssembly",
+                                "-XX:+LogCompilation",
+                                "-XX:+TraceClassLoading");
         Function<ChainedOptionsBuilder, ChainedOptionsBuilder> profilers = system.equals("Linux")
                 ? (options) ->
                 options
@@ -258,10 +258,10 @@ public class BenchmarkDecimalAggregation
                         .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
 
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
-//                .includeMethod("benchmarkAddInput")
-//                .withOptions(optionsBuilder ->
-//                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
-//                                .build())
+                .includeMethod("benchmarkEvaluateIntermediate")
+                .withOptions(optionsBuilder ->
+                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
+                                .build())
                 .run();
     }
 }
