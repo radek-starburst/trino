@@ -103,9 +103,6 @@ public final class DecimalSumAggregation
             @AggregationState LongState otherOverflowState,
             @GroupId long groupId)
     {
-        if (!otherDecimalState.isNotNull(groupId)) {
-            return;
-        }
         long[] decimal = decimalState.getArray(groupId);
         int decimalOffset = decimalState.getArrayOffset(groupId);
         long[] otherDecimal = otherDecimalState.getArray(groupId);
@@ -119,7 +116,7 @@ public final class DecimalSumAggregation
                 decimal,
                 decimalOffset);
 
-        decimalState.setIsNotNull(groupId, true);
+        decimalState.setIsNotNull(groupId, decimalState.isNotNull(groupId) | otherDecimalState.isNotNull(groupId));
 
         if(overflow != 0 || otherOverflowState.getValue(groupId) != 0) {
             overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId));

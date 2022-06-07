@@ -56,6 +56,8 @@ public class NullableInt128StateSerializer
             state.setIsNotNull(groupId, true);
         } else {
             state.setIsNotNull(groupId, false);
+            decimal[offset] = 0;
+            decimal[offset + 1] = 0;
         }
     }
 }
