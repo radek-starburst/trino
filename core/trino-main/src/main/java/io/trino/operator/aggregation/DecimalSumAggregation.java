@@ -42,7 +42,7 @@ public final class DecimalSumAggregation
     @LiteralParameters({"p", "s"})
     public static void inputShortDecimal(
             @AggregationState NullableInt128State decimalState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @SqlType("decimal(p,s)") long rightLow,
             @GroupId long groupId)
     {
@@ -62,6 +62,7 @@ public final class DecimalSumAggregation
                 offset);
 
         if (overflow != 0) {
+            overflowState.setNull(groupId, false);
             overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
         }
     }
@@ -70,7 +71,7 @@ public final class DecimalSumAggregation
     @LiteralParameters({"p", "s"})
     public static void inputLongDecimal(
             @AggregationState NullableInt128State decimalState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             @BlockPosition @SqlType(value = "decimal(p,s)", nativeContainerType = Int128.class) Block block,
             @BlockIndex int position,
             @GroupId long groupId) {
@@ -92,15 +93,16 @@ public final class DecimalSumAggregation
 
         if (overflow != 0) {
             overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
+            overflowState.setNull(groupId, false);
         }
     }
 
     @CombineFunction
     public static void combine(
             @AggregationState NullableInt128State decimalState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState  overflowState,
             @AggregationState NullableInt128State otherDecimalState,
-            @AggregationState LongState otherOverflowState,
+            @AggregationState NullableLongState otherOverflowState,
             @GroupId long groupId)
     {
         long[] decimal = decimalState.getArray(groupId);
@@ -118,15 +120,17 @@ public final class DecimalSumAggregation
 
         decimalState.setIsNotNull(groupId, decimalState.isNotNull(groupId) | otherDecimalState.isNotNull(groupId));
 
-        if(overflow != 0 || otherOverflowState.getValue(groupId) != 0) {
-            overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId));
+        int isOtherOverflowNull = otherOverflowState.isNull(groupId) ? 1 : 0;
+        if(overflow != 0 || isOtherOverflowNull == 0) {
+            overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId) * isOtherOverflowNull);
+            overflowState.setNull(groupId, false);
         }
     }
 
     @OutputFunction("decimal(38,s)")
     public static void outputLongDecimal(
             @AggregationState NullableInt128State decimalState,
-            @AggregationState LongState overflowState,
+            @AggregationState NullableLongState overflowState,
             BlockBuilder out,
             @GroupId long groupId)
     {

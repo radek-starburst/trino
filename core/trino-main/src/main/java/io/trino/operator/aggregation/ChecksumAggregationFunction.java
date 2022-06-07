@@ -17,19 +17,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.trino.operator.aggregation.state.NullableLongState;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.BlockIndex;
-import io.trino.spi.function.BlockPosition;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.Convention;
-import io.trino.spi.function.Description;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OperatorDependency;
-import io.trino.spi.function.OperatorType;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.SqlType;
-import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.*;
 
 import java.lang.invoke.MethodHandle;
 
@@ -57,38 +45,41 @@ public final class ChecksumAggregationFunction
                     MethodHandle xxHash64Operator,
             @AggregationState NullableLongState state,
             @NullablePosition @BlockPosition @SqlType("T") Block block,
-            @BlockIndex int position)
+            @BlockIndex int position,
+            @GroupId long groupId)
             throws Throwable
     {
-        state.setNull(false);
+        state.setNull(groupId, false);
         if (block.isNull(position)) {
-            state.setValue(state.getValue() + PRIME64);
+            state.setValue(groupId, state.getValue(groupId) + PRIME64);
         }
         else {
             long valueHash = (long) xxHash64Operator.invokeExact(block, position);
-            state.setValue(state.getValue() + valueHash * PRIME64);
+            state.setValue(groupId, state.getValue(groupId) + valueHash * PRIME64);
         }
     }
 
     @CombineFunction
     public static void combine(
             @AggregationState NullableLongState state,
-            @AggregationState NullableLongState otherState)
+            @AggregationState NullableLongState otherState,
+            @GroupId long groupId)
     {
-        state.setNull(state.isNull() && otherState.isNull());
-        state.setValue(state.getValue() + otherState.getValue());
+        state.setNull(groupId, state.isNull(groupId) && otherState.isNull(groupId));
+        state.setValue(groupId, state.getValue(groupId) + otherState.getValue(groupId));
     }
 
     @OutputFunction("VARBINARY")
     public static void output(
             @AggregationState NullableLongState state,
-            BlockBuilder out)
+            BlockBuilder out,
+            @GroupId long groupId)
     {
-        if (state.isNull()) {
+        if (state.isNull(groupId)) {
             out.appendNull();
         }
         else {
-            VARBINARY.writeSlice(out, wrappedLongArray(state.getValue()));
+            VARBINARY.writeSlice(out, wrappedLongArray(state.getValue(groupId)));
         }
     }
 }
