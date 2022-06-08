@@ -188,6 +188,12 @@ public class RowBlockBuilder
         return this;
     }
 
+    public void ensureSize(int size) {
+        int newSize = BlockUtil.calculateNewArraySize(rowIsNull.length);
+        rowIsNull = Arrays.copyOf(rowIsNull, newSize);
+        fieldBlockOffsets = Arrays.copyOf(fieldBlockOffsets, newSize + 1);
+    }
+
     private void entryAdded(boolean isNull)
     {
         if (rowIsNull.length <= positionCount) {
@@ -206,12 +212,6 @@ public class RowBlockBuilder
         hasNullRow |= isNull;
         hasNonNullRow |= !isNull;
         positionCount++;
-
-        for (int i = 0; i < numFields; i++) {
-            if (fieldBlockBuilders[i].getPositionCount() != fieldBlockOffsets[positionCount]) {
-                throw new IllegalStateException(format("field %s has unexpected position count. Expected: %s, actual: %s", i, fieldBlockOffsets[positionCount], fieldBlockBuilders[i].getPositionCount()));
-            }
-        }
 
         if (blockBuilderStatus != null) {
             blockBuilderStatus.addBytes(Integer.BYTES + Byte.BYTES);

@@ -48,8 +48,16 @@ public final class ColumnarRow
         int firstRowPosition = rowBlock.getFieldBlockOffset(0);
         int totalRowCount = rowBlock.getFieldBlockOffset(block.getPositionCount()) - firstRowPosition;
         Block[] fieldBlocks = new Block[rowBlock.numFields];
-        for (int i = 0; i < fieldBlocks.length; i++) {
-            fieldBlocks[i] = rowBlock.getRawFieldBlocks()[i].getRegion(firstRowPosition, totalRowCount);
+
+        if(fieldBlocks.length == 3) {
+            fieldBlocks[0] = rowBlock.getRawFieldBlocks()[0].getRegion(firstRowPosition, totalRowCount);
+            fieldBlocks[1] = rowBlock.getRawFieldBlocks()[1].getRegion(firstRowPosition, totalRowCount);
+            fieldBlocks[2] = rowBlock.getRawFieldBlocks()[2].getRegion(firstRowPosition, totalRowCount);
+
+        } else {
+            for (int i = 0; i < fieldBlocks.length; i++) {
+                fieldBlocks[i] = rowBlock.getRawFieldBlocks()[i].getRegion(firstRowPosition, totalRowCount);
+            }
         }
 
         return new ColumnarRow(block.getPositionCount(), block, fieldBlocks);
@@ -84,8 +92,15 @@ public final class ColumnarRow
 
         ColumnarRow columnarRow = toColumnarRow(dictionaryBlock.getDictionary());
         Block[] fields = new Block[columnarRow.getFieldCount()];
-        for (int i = 0; i < columnarRow.getFieldCount(); i++) {
-            fields[i] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(i), dictionaryIds);
+
+        if(columnarRow.getFieldCount() == 3) {
+            fields[0] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(0), dictionaryIds);
+            fields[1] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(1), dictionaryIds);
+            fields[2] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(2), dictionaryIds);
+        } else {
+            for (int i = 0; i < columnarRow.getFieldCount(); i++) {
+                fields[i] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(i), dictionaryIds);
+            }
         }
 
         int positionCount = dictionaryBlock.getPositionCount();
