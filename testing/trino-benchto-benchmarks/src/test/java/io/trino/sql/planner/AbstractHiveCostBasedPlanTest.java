@@ -16,6 +16,7 @@ package io.trino.sql.planner;
 
 import com.google.common.base.VerifyException;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.google.common.io.Resources;
 import io.trino.metadata.TableHandle;
 import io.trino.metadata.TableMetadata;
@@ -24,16 +25,14 @@ import io.trino.plugin.hive.TestingHiveConnectorFactory;
 import io.trino.plugin.hive.metastore.UnimplementedHiveMetastore;
 import io.trino.plugin.hive.metastore.recording.HiveMetastoreRecording;
 import io.trino.plugin.hive.metastore.recording.RecordingHiveMetastore;
+import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorFactory;
 import io.trino.sql.planner.OptimizerConfig.JoinDistributionType;
 import io.trino.sql.planner.OptimizerConfig.JoinReorderingStrategy;
 import io.trino.sql.planner.assertions.BasePlanTest;
-import io.trino.sql.planner.plan.AggregationNode;
-import io.trino.sql.planner.plan.ExchangeNode;
-import io.trino.sql.planner.plan.JoinNode;
-import io.trino.sql.planner.plan.SemiJoinNode;
-import io.trino.sql.planner.plan.TableScanNode;
-import io.trino.sql.planner.plan.ValuesNode;
+import io.trino.sql.planner.optimizations.PlanNodeSearcher;
+import io.trino.sql.planner.plan.*;
+import io.trino.sql.tree.Expression;
 import io.trino.testing.LocalQueryRunner;
 import io.trino.testing.QueryRunner;
 import org.testng.annotations.DataProvider;
@@ -45,9 +44,11 @@ import java.io.UncheckedIOException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.MoreCollectors.onlyElement;
@@ -211,9 +212,29 @@ public abstract class AbstractHiveCostBasedPlanTest
     {
         Plan plan = plan(query, OPTIMIZED_AND_VALIDATED, false);
 
-        JoinOrderPrinter joinOrderPrinter = new JoinOrderPrinter();
-        plan.getRoot().accept(joinOrderPrinter, 0);
-        return joinOrderPrinter.result();
+        JoinInsightVisitor joinInsightVisitor = new JoinInsightVisitor();
+        plan.getRoot().accept(joinInsightVisitor, null);
+        for(JoinInfo joinInfo : joinInsightVisitor.joins) {
+            List<Object> columnHandlesForLeft = joinInfo.leftSymbols.stream().map(it -> lookupForColumnBySymbol(it, joinInfo.leftTable, joinInfo.leftAssignments)).collect(Collectors.toList());
+            List<Object> columnHandlesForRight = joinInfo.rightSymbols.stream().map(it -> lookupForColumnBySymbol(it, joinInfo.rightTable, joinInfo.rightAssignments)).collect(Collectors.toList());
+            System.out.println(columnHandlesForLeft);
+            System.out.println(columnHandlesForRight);
+        }
+        return "";
+    }
+
+    private Object lookupForColumnBySymbol(Symbol symbol, List<TableScanNode> tables, Map<Symbol, Expression> assignments) {
+        Map<Symbol, ColumnHandle> mapper = new HashMap<>();
+        tables.forEach(it -> mapper.putAll(it.getAssignments()));
+        ColumnHandle columnHandle = mapper.get(symbol);
+        Expression expr = assignments.get(symbol);
+
+        checkArgument(columnHandle != null || expr != null, String.format("Not found column for symbol %s", symbol));
+        if (columnHandle != null) {
+            return columnHandle;
+        } else {
+            return expr;
+        }
     }
 
     protected Path getSourcePath()
@@ -341,6 +362,87 @@ public abstract class AbstractHiveCostBasedPlanTest
         {
             String formattedMessage = format(message, args);
             result.append(format("%s%s\n", "    ".repeat(indent), formattedMessage));
+        }
+    }
+
+    public static class JoinInfo {
+        private final List<JoinNode.EquiJoinClause> criteria;
+        private final List<Symbol> leftSymbols;
+        private final List<Symbol> rightSymbols;
+        private final List<TableScanNode> leftTable;
+        private final List<TableScanNode> rightTable;
+        private final Map<Symbol, Expression> rightAssignments;
+        private final Map<Symbol, Expression> leftAssignments;
+
+        public JoinInfo(List<JoinNode.EquiJoinClause> criteria, List<TableScanNode> tableScanNodesLHS, List<TableScanNode> tableScanNodesRHS, Map<Symbol, Expression> assignmentsLHS, Map<Symbol, Expression> assignmentsRHS) {
+            this.criteria = criteria;
+            this.leftSymbols = Lists.transform(criteria, JoinNode.EquiJoinClause::getLeft);
+            this.rightSymbols = Lists.transform(criteria, JoinNode.EquiJoinClause::getRight);
+            this.leftTable = tableScanNodesLHS;
+            this.rightTable = tableScanNodesRHS;
+            this.leftAssignments = assignmentsLHS;
+            this.rightAssignments = assignmentsRHS;
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.append(String.format("JOIN"));
+            return "";
+        }
+    }
+
+    public static class JoinInsightVisitor extends PlanVisitor<Void, Void> {
+
+        final List<JoinInfo> joins;
+        public JoinInsightVisitor() {
+            this.joins = new ArrayList<>();
+        }
+
+        @Override
+        public Void visitPlan(PlanNode node, Void context) {
+            node.getSources().forEach(n -> n.accept(this, context));
+            return null;
+        }
+
+        @Override
+        public Void visitJoin(JoinNode node, Void context) {
+            List<JoinNode.EquiJoinClause> criteria = node.getCriteria();
+
+            List<TableScanNode> tableScanNodesLHS = PlanNodeSearcher.searchFrom(node.getLeft())
+                    .where(n -> n instanceof TableScanNode)
+                    .findAll();
+
+            List<TableScanNode> tableScanNodesRHS = PlanNodeSearcher.searchFrom(node.getRight())
+                    .where(n -> n instanceof TableScanNode)
+                    .findAll();
+
+            Map<Symbol, Expression> assignmentsLHS = new HashMap<>();
+            PlanNodeSearcher.searchFrom(node.getLeft())
+                    .where(n -> n instanceof ProjectNode)
+                    .findAll()
+                    .stream()
+                    .map(it -> ((ProjectNode) it).getAssignments())
+                    .map(Assignments::getMap)
+                    .forEach(assignmentsLHS::putAll);
+
+            Map<Symbol, Expression> assignmentsRHS = new HashMap<>();
+            PlanNodeSearcher.searchFrom(node.getRight())
+                    .where(n -> n instanceof ProjectNode)
+                    .findAll()
+                    .stream()
+                    .map(it -> ((ProjectNode) it).getAssignments())
+                    .map(Assignments::getMap)
+                    .forEach(assignmentsRHS::putAll);
+
+
+
+            JoinInfo joinInfo = new JoinInfo(criteria, tableScanNodesLHS, tableScanNodesRHS, assignmentsLHS, assignmentsRHS);
+            joins.add(joinInfo);
+
+            node.getLeft().accept(this, context);
+            node.getRight().accept(this, context);
+            return null;
         }
     }
 }
