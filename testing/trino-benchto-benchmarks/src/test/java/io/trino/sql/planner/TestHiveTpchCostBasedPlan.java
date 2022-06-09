@@ -41,6 +41,11 @@ public class TestHiveTpchCostBasedPlan
             .map(queryId -> format("/sql/presto/tpch/%s.sql", queryId))
             .collect(toImmutableList());
 
+    public static final List<String> TPCDS_SQL_FILES = IntStream.rangeClosed(1, 96)
+            .mapToObj(i -> format("q%02d", i))
+            .map(queryId -> format("/sql/presto/tpcds/%s.sql", queryId))
+            .collect(toImmutableList());
+
     @Override
     protected String getMetadataDir()
     {
@@ -56,7 +61,7 @@ public class TestHiveTpchCostBasedPlan
     @Override
     protected Stream<String> getQueryResourcePaths()
     {
-        return TPCH_SQL_FILES.stream();
+        return TPCH_SQL_FILES.stream();//, TPCDS_SQL_FILES.stream());
     }
 
     public static void main(String[] args)
