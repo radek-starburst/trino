@@ -24,6 +24,10 @@ public final class ColumnarRow
     private final Block nullCheckBlock;
     private final Block[] fields;
 
+    public static boolean isAbstractRowBlock(Block block) {
+        return block instanceof AbstractRowBlock;
+    }
+
     public static ColumnarRow toColumnarRow(Block block)
     {
         requireNonNull(block, "block is null");
@@ -49,18 +53,11 @@ public final class ColumnarRow
         int totalRowCount = rowBlock.getFieldBlockOffset(block.getPositionCount()) - firstRowPosition;
         Block[] fieldBlocks = new Block[rowBlock.numFields];
 
-        if(fieldBlocks.length == 3) {
-            fieldBlocks[0] = rowBlock.getRawFieldBlocks()[0].getRegion(firstRowPosition, totalRowCount);
-            fieldBlocks[1] = rowBlock.getRawFieldBlocks()[1].getRegion(firstRowPosition, totalRowCount);
-            fieldBlocks[2] = rowBlock.getRawFieldBlocks()[2].getRegion(firstRowPosition, totalRowCount);
-
-        } else {
-            for (int i = 0; i < fieldBlocks.length; i++) {
-                fieldBlocks[i] = rowBlock.getRawFieldBlocks()[i].getRegion(firstRowPosition, totalRowCount);
-            }
+        for (int i = 0; i < fieldBlocks.length; i++) {
+            fieldBlocks[i] = rowBlock.getRawFieldBlocks()[i].getRegion(firstRowPosition, totalRowCount);
         }
 
-        return new ColumnarRow(block.getPositionCount(), block, fieldBlocks);
+        return new ColumnarRow(rowBlock.getPositionCount(), block, fieldBlocks);
     }
 
     private static ColumnarRow toColumnarRow(DictionaryBlock dictionaryBlock)
@@ -93,14 +90,8 @@ public final class ColumnarRow
         ColumnarRow columnarRow = toColumnarRow(dictionaryBlock.getDictionary());
         Block[] fields = new Block[columnarRow.getFieldCount()];
 
-        if(columnarRow.getFieldCount() == 3) {
-            fields[0] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(0), dictionaryIds);
-            fields[1] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(1), dictionaryIds);
-            fields[2] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(2), dictionaryIds);
-        } else {
-            for (int i = 0; i < columnarRow.getFieldCount(); i++) {
-                fields[i] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(i), dictionaryIds);
-            }
+        for (int i = 0; i < columnarRow.getFieldCount(); i++) {
+            fields[i] = new DictionaryBlock(nonNullPositionCount, columnarRow.getField(i), dictionaryIds);
         }
 
         int positionCount = dictionaryBlock.getPositionCount();
@@ -150,7 +141,7 @@ public final class ColumnarRow
         return new ColumnarRow(rleBlock.getPositionCount(), rleBlock, fields);
     }
 
-    private ColumnarRow(int positionCount, @Nullable Block nullCheckBlock, Block[] fields)
+    public ColumnarRow(int positionCount, @Nullable Block nullCheckBlock, Block[] fields)
     {
         this.positionCount = positionCount;
         this.nullCheckBlock = nullCheckBlock != null && nullCheckBlock.mayHaveNull() ? nullCheckBlock : null;

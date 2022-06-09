@@ -33,10 +33,9 @@ import io.trino.operator.GroupByIdBlock;
 import io.trino.operator.aggregation.AggregationMetadata.AccumulatorStateDescriptor;
 import io.trino.operator.window.InternalWindowIndex;
 import io.trino.spi.Page;
-import io.trino.spi.block.Block;
-import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.block.ColumnarRow;
+import io.trino.spi.block.*;
 import io.trino.spi.function.*;
+import io.trino.sql.ExpressionUtils;
 import io.trino.sql.gen.Binding;
 import io.trino.sql.gen.CallSiteBinder;
 import io.trino.sql.gen.CompilerOperations;
@@ -198,6 +197,8 @@ public final class AccumulatorCompiler
         if (grouped) {
             generatePrepareFinal(definition);
         }
+
+        generateToColumnarRow(definition, stateFieldAndDescriptors);
 
         Class<? extends T> accumulatorClass = defineClass(definition, accumulatorInterface, callSiteBinder.getBindings(), classLoader);
         try {
@@ -682,7 +683,7 @@ public final class AccumulatorCompiler
             //  2. avoid the cost of constructing SingleRowBlock for each group
             Variable columnarRow = scope.declareVariable(ColumnarRow.class, "columnarRow");
             body.append(columnarRow.set(
-                    invokeStatic(ColumnarRow.class, "toColumnarRow", ColumnarRow.class, scope.getVariable("block"))));
+                    thisVariable.invoke("toColumnarRow", ColumnarRow.class, scope.getVariable("block"))));
 
             block = new ArrayList<>();
             for (int i = 0; i < stateCount; i++) {
@@ -871,6 +872,57 @@ public final class AccumulatorCompiler
             body.append(out.invoke("closeEntry", BlockBuilder.class).pop())
                     .ret();
         }
+    }
+
+    private static void generateToColumnarRow(ClassDefinition definition, List<StateFieldAndDescriptor> stateFieldAndDescriptors) {
+        Parameter inputBlock = arg("block", Block.class);
+        MethodDefinition method = definition.declareMethod(a(PRIVATE), "toColumnarRow", type(ColumnarRow.class), inputBlock);
+
+        BytecodeBlock methodBody = method.getBody();
+
+        BytecodeBlock notAbstractBlock = new BytecodeBlock()
+                .append(
+                        invokeStatic(ColumnarRow.class, "toColumnarRow", ColumnarRow.class, inputBlock)
+                ).ret(ColumnarRow.class);
+
+        methodBody.append(
+                new IfStatement("if")
+                        .condition(
+                                BytecodeExpressions.invokeStatic(ColumnarRow.class, "isAbstractRowBlock", boolean.class, inputBlock)
+                        )
+                        .ifFalse(notAbstractBlock)
+        );
+
+        // For AbstractRowBlock
+
+        Variable rowBlock = method.getScope().declareVariable(AbstractRowBlock.class, "rowBlock");
+        Variable firstRowPosition = method.getScope().declareVariable(int.class, "firstRowPosition");
+        Variable totalRowCount = method.getScope().declareVariable(int.class, "totalRowCount");
+        Variable fieldBlocks = method.getScope().declareVariable(Block[].class, "fieldBlocks");
+
+        methodBody.append(
+                        rowBlock.set(inputBlock.cast(AbstractRowBlock.class)))
+                .append(
+                        firstRowPosition.set(rowBlock.invoke("getFieldBlockOffset", int.class, constantInt(0))))
+                .append(
+                        totalRowCount.set(
+                                BytecodeExpressions.subtract(
+                                        rowBlock.invoke("getFieldBlockOffset", int.class, inputBlock.invoke("getPositionCount", int.class)),
+                                        firstRowPosition
+                                )
+                        )
+                )
+                .append(
+                        fieldBlocks.set(BytecodeExpressions.newArray(type(Block[].class), rowBlock.getField("numFields", int.class))));
+
+        for (int i = 0; i < stateFieldAndDescriptors.size(); i++) {
+            methodBody.append(
+                    fieldBlocks.setElement(i, rowBlock.invoke("getRawFieldBlocks", Block[].class).getElement(i).invoke("getRegion", Block.class, firstRowPosition, totalRowCount))
+            );
+        }
+
+        methodBody.append(BytecodeExpressions.newInstance(ColumnarRow.class, rowBlock.invoke("getPositionCount", int.class), inputBlock, fieldBlocks))
+                .ret(ColumnarRow.class);
     }
 
     private static void generateEvaluateIntermediate(ClassDefinition definition, List<StateFieldAndDescriptor> stateFieldAndDescriptors, boolean decomposable)

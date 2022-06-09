@@ -82,7 +82,7 @@ public class RowBlockBuilder
     }
 
     @Override
-    protected Block[] getRawFieldBlocks()
+    public Block[] getRawFieldBlocks()
     {
         return fieldBlockBuilders;
     }

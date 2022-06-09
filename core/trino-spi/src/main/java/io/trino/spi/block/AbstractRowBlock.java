@@ -30,7 +30,7 @@ import static io.trino.spi.block.RowBlock.createRowBlockInternal;
 public abstract class AbstractRowBlock
         implements Block
 {
-    protected final int numFields;
+    public final int numFields;
 
     @Override
     public final List<Block> getChildren()
@@ -38,7 +38,7 @@ public abstract class AbstractRowBlock
         return List.of(getRawFieldBlocks());
     }
 
-    protected abstract Block[] getRawFieldBlocks();
+    public abstract Block[] getRawFieldBlocks();
 
     @Nullable
     protected abstract int[] getFieldBlockOffsets();

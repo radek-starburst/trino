@@ -258,7 +258,7 @@ public class BenchmarkDecimalAggregation
                         .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
 
         Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
-//                .includeMethod("benchmarkEvaluateIntermediate")
+                .includeMethod("benchmarkAddIntermediate")
 //                .withOptions(optionsBuilder ->
 //                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
 //                                .build())
