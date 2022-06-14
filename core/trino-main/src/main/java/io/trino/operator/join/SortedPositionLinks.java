@@ -49,6 +49,8 @@ public final class SortedPositionLinks
     {
         private final Int2ObjectOpenHashMap<IntArrayList> positionLinks;
         private final int size;
+
+        private int links;
         private final PositionComparator comparator;
         private final PagesHashStrategy pagesHashStrategy;
         private final LongArrayList addresses;
@@ -60,6 +62,7 @@ public final class SortedPositionLinks
             this.pagesHashStrategy = pagesHashStrategy;
             this.addresses = addresses;
             positionLinks = new Int2ObjectOpenHashMap<>();
+            this.links = 0;
         }
 
         @Override
@@ -77,7 +80,7 @@ public final class SortedPositionLinks
             if (isNull(to)) {
                 return from;
             }
-
+            links++;
             // make sure that from value is the smaller one
             if (comparator.compare(from, to) > 0) {
                 // _from_ is larger so, just add to current chain _to_
@@ -105,8 +108,7 @@ public final class SortedPositionLinks
         }
 
         @Override
-        public Factory build()
-        {
+        public Factory build() {
             ArrayPositionLinks.FactoryBuilder arrayPositionLinksFactoryBuilder = ArrayPositionLinks.builder(size);
             int[][] sortedPositionLinks = new int[size][];
 
@@ -131,7 +133,7 @@ public final class SortedPositionLinks
                 }
             }
 
-            return createFactory(sortedPositionLinks, arrayPositionLinksFactoryBuilder.build());
+            return createFactory(sortedPositionLinks, arrayPositionLinksFactoryBuilder.build(), links);
         }
 
         @Override
@@ -141,7 +143,7 @@ public final class SortedPositionLinks
         }
 
         // Separate static method to avoid embedding references to "this"
-        private static Factory createFactory(int[][] sortedPositionLinks, Factory arrayPositionLinksFactory)
+        private static Factory createFactory(int[][] sortedPositionLinks, Factory arrayPositionLinksFactory, int links)
         {
             requireNonNull(sortedPositionLinks, "sortedPositionLinks is null");
             requireNonNull(arrayPositionLinksFactory, "arrayPositionLinksFactory is null");
@@ -153,7 +155,8 @@ public final class SortedPositionLinks
                     return new SortedPositionLinks(
                             arrayPositionLinksFactory.create(ImmutableList.of()),
                             sortedPositionLinks,
-                            searchFunctions);
+                            searchFunctions,
+                            links);
                 }
 
                 @Override
@@ -167,11 +170,12 @@ public final class SortedPositionLinks
     }
 
     private final PositionLinks positionLinks;
+    private final int links;
     private final int[][] sortedPositionLinks;
     private final long sizeInBytes;
     private final JoinFilterFunction[] searchFunctions;
 
-    private SortedPositionLinks(PositionLinks positionLinks, int[][] sortedPositionLinks, List<JoinFilterFunction> searchFunctions)
+    private SortedPositionLinks(PositionLinks positionLinks, int[][] sortedPositionLinks, List<JoinFilterFunction> searchFunctions, int links)
     {
         this.positionLinks = requireNonNull(positionLinks, "positionLinks is null");
         this.sortedPositionLinks = requireNonNull(sortedPositionLinks, "sortedPositionLinks is null");
@@ -179,6 +183,7 @@ public final class SortedPositionLinks
         requireNonNull(searchFunctions, "searchFunctions is null");
         checkState(!searchFunctions.isEmpty(), "Using sortedPositionLinks with no search functions");
         this.searchFunctions = searchFunctions.toArray(JoinFilterFunction[]::new);
+        this.links = links;
     }
 
     private static long sizeOfPositionLinks(int[][] sortedPositionLinks)
@@ -193,6 +198,11 @@ public final class SortedPositionLinks
     public static FactoryBuilder builder(int size, PagesHashStrategy pagesHashStrategy, LongArrayList addresses)
     {
         return new FactoryBuilder(size, pagesHashStrategy, addresses);
+    }
+
+    @Override
+    public int getSize() {
+        return links;
     }
 
     @Override

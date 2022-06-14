@@ -42,6 +42,14 @@ public interface LookupSource
 
     boolean isEmpty();
 
+    default long getPositionLinksSize() {
+        return 0;
+    }
+
+    default long getHashMapSize() {
+        return 0;
+    }
+
     @Override
     void close();
 }

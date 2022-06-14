@@ -36,6 +36,8 @@ public class JoinStatisticsCounter
     //      [2*bucket]      count probe positions that produced "bucket" rows on source side,
     //      [2*bucket + 1]  total count of rows that were produces by probe rows in this bucket.
     private final long[] logHistogramCounters = new long[HISTOGRAM_BUCKETS * 2];
+    private long linkPositionCount = 0;
+    private long hashMapSize = 0;
 
     /**
      * Estimated number of positions in on the build side
@@ -71,9 +73,17 @@ public class JoinStatisticsCounter
         logHistogramCounters[2 * bucket + 1] += numSourcePositions;
     }
 
+    public void recordPositionLinkSize(long linkPositionSize) {
+        this.linkPositionCount = linkPositionSize;
+    }
+
+    public void recordHashMapSize(long hashMapSize) {
+        this.hashMapSize = hashMapSize;
+    }
+
     @Override
     public JoinOperatorInfo get()
     {
-        return createJoinOperatorInfo(joinType, logHistogramCounters, lookupSourcePositions);
+        return createJoinOperatorInfo(joinType, logHistogramCounters, lookupSourcePositions, hashMapSize + linkPositionCount, hashMapSize);
     }
 }

@@ -24,6 +24,7 @@ import java.util.List;
  */
 public interface PositionLinks
 {
+    int getSize();
     long getSizeInBytes();
 
     /**

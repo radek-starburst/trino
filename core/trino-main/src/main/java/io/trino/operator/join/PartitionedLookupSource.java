@@ -124,6 +124,16 @@ public class PartitionedLookupSource
     }
 
     @Override
+    public long getPositionLinksSize() {
+        return Arrays.stream(lookupSources).mapToLong(LookupSource::getPositionLinksSize).sum();
+    }
+
+    @Override
+    public long getHashMapSize() {
+        return Arrays.stream(lookupSources).mapToLong(LookupSource::getHashMapSize).sum();
+    }
+
+    @Override
     public long getJoinPosition(int position, Page hashChannelsPage, Page allChannelsPage)
     {
         return getJoinPosition(position, hashChannelsPage, allChannelsPage, partitionGenerator.getRawHash(hashChannelsPage, position));

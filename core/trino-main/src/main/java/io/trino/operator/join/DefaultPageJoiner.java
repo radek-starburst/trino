@@ -175,6 +175,8 @@ public class DefaultPageJoiner
             }
 
             lookupSourceProvider = requireNonNull(getDone(lookupSourceProviderFuture));
+            statisticsCounter.recordPositionLinkSize(lookupSourceProvider.withLease(lookupSourceLease -> lookupSourceLease.getLookupSource().getPositionLinksSize()));
+            statisticsCounter.recordHashMapSize(lookupSourceProvider.withLease(lookupSourceLease -> lookupSourceLease.getLookupSource().getHashMapSize()));
             statisticsCounter.updateLookupSourcePositions(lookupSourceProvider.withLease(
                     lookupSourceLease -> lookupSourceLease.getLookupSource().getJoinPositionCount()));
         }

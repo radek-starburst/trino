@@ -30,7 +30,6 @@ public final class JoinHash
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(JoinHash.class).instanceSize();
     private final PagesHash pagesHash;
-
     // we unwrap Optional<JoinFilterFunction> to actual verifier or null in constructor for performance reasons
     // we do quick check for `filterFunction == null` in `isJoinPositionEligible` to avoid calls to applyFilterFunction
     @Nullable
@@ -77,6 +76,16 @@ public final class JoinHash
     {
         int addressIndex = pagesHash.getAddressIndex(position, hashChannelsPage);
         return startJoinPosition(addressIndex, position, allChannelsPage);
+    }
+
+    @Override
+    public long getPositionLinksSize() {
+        return (positionLinks == null ? 0 : positionLinks.getSize());
+    }
+
+    @Override
+    public long getHashMapSize() {
+        return pagesHash.getHashMapSize();
     }
 
     @Override

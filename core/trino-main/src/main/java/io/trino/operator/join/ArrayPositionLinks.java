@@ -25,83 +25,76 @@ import static io.airlift.slice.SizeOf.sizeOf;
 import static java.util.Objects.requireNonNull;
 
 public final class ArrayPositionLinks
-        implements PositionLinks
-{
+        implements PositionLinks {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ArrayPositionLinks.class).instanceSize();
 
     public static class FactoryBuilder
-            implements PositionLinks.FactoryBuilder
-    {
+            implements PositionLinks.FactoryBuilder {
         private final int[] positionLinks;
         private int size;
 
-        private FactoryBuilder(int size)
-        {
+        private FactoryBuilder(int size) {
             positionLinks = new int[size];
             Arrays.fill(positionLinks, -1);
         }
 
         @Override
-        public int link(int left, int right)
-        {
+        public int link(int left, int right) {
             size++;
             positionLinks[left] = right;
             return left;
         }
 
         @Override
-        public PositionLinks.Factory build()
-        {
-            return new PositionLinks.Factory()
-            {
+        public PositionLinks.Factory build() {
+            return new PositionLinks.Factory() {
                 @Override
-                public PositionLinks create(List<JoinFilterFunction> searchFunctions)
-                {
-                    return new ArrayPositionLinks(positionLinks);
+                public PositionLinks create(List<JoinFilterFunction> searchFunctions) {
+                    return new ArrayPositionLinks(positionLinks, size);
                 }
 
                 @Override
-                public long checksum()
-                {
+                public long checksum() {
                     return XxHash64.hash(Slices.wrappedIntArray(positionLinks));
                 }
             };
         }
 
         @Override
-        public boolean isEmpty()
-        {
+        public boolean isEmpty() {
             return size == 0;
         }
     }
 
     private final int[] positionLinks;
+    private int size;
 
-    private ArrayPositionLinks(int[] positionLinks)
-    {
+    private ArrayPositionLinks(int[] positionLinks, int size) {
         this.positionLinks = requireNonNull(positionLinks, "positionLinks is null");
+        this.size = size;
     }
 
-    public static FactoryBuilder builder(int size)
-    {
+    public static FactoryBuilder builder(int size) {
         return new FactoryBuilder(size);
     }
 
     @Override
-    public int start(int position, int probePosition, Page allProbeChannelsPage)
-    {
+    public int start(int position, int probePosition, Page allProbeChannelsPage) {
         return position;
     }
 
     @Override
-    public int next(int position, int probePosition, Page allProbeChannelsPage)
-    {
+    public int next(int position, int probePosition, Page allProbeChannelsPage) {
         return positionLinks[position];
     }
 
     @Override
-    public long getSizeInBytes()
-    {
+    public int getSize() {
+        return size;
+    }
+
+    @Override
+    public long getSizeInBytes() {
         return INSTANCE_SIZE + sizeOf(positionLinks);
     }
 }

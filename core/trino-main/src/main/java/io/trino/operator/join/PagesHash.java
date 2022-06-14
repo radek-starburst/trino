@@ -124,6 +124,10 @@ public final class PagesHash
         expectedHashCollisions = estimateNumberOfHashCollisions(addresses.size(), hashSize);
     }
 
+    public long getHashMapSize() {
+        return Arrays.stream(key).filter(it -> it != -1).count();
+    }
+
     public int getPositionCount()
     {
         return addresses.size();

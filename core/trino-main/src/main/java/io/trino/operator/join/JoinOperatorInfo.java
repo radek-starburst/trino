@@ -32,9 +32,15 @@ public class JoinOperatorInfo
     private final JoinType joinType;
     private final long[] logHistogramProbes;
     private final long[] logHistogramOutput;
+
+    private final double averagePositionLinkSize;
+
+    private final long positionLinkSize;
+
+    private final long hashMapSize;
     private final Optional<Long> lookupSourcePositions;
 
-    public static JoinOperatorInfo createJoinOperatorInfo(JoinType joinType, long[] logHistogramCounters, Optional<Long> lookupSourcePositions)
+    public static JoinOperatorInfo createJoinOperatorInfo(JoinType joinType, long[] logHistogramCounters, Optional<Long> lookupSourcePositions, long positionLinkSize, long hashMapSize)
     {
         long[] logHistogramProbes = new long[HISTOGRAM_BUCKETS];
         long[] logHistogramOutput = new long[HISTOGRAM_BUCKETS];
@@ -42,7 +48,8 @@ public class JoinOperatorInfo
             logHistogramProbes[i] = logHistogramCounters[2 * i];
             logHistogramOutput[i] = logHistogramCounters[2 * i + 1];
         }
-        return new JoinOperatorInfo(joinType, logHistogramProbes, logHistogramOutput, lookupSourcePositions);
+        double averagePositionLinkSize = hashMapSize == 0 ? 0 : (double) positionLinkSize / hashMapSize;
+        return new JoinOperatorInfo(joinType, logHistogramProbes, logHistogramOutput, lookupSourcePositions, averagePositionLinkSize, positionLinkSize, hashMapSize);
     }
 
     @JsonCreator
@@ -50,7 +57,10 @@ public class JoinOperatorInfo
             @JsonProperty("joinType") JoinType joinType,
             @JsonProperty("logHistogramProbes") long[] logHistogramProbes,
             @JsonProperty("logHistogramOutput") long[] logHistogramOutput,
-            @JsonProperty("lookupSourcePositions") Optional<Long> lookupSourcePositions)
+            @JsonProperty("lookupSourcePositions") Optional<Long> lookupSourcePositions,
+            @JsonProperty("averagePositionLinkSize") double averagePositionLinkSize,
+            long positionLinkSize,
+            long hashMapSize)
     {
         checkArgument(logHistogramProbes.length == HISTOGRAM_BUCKETS);
         checkArgument(logHistogramOutput.length == HISTOGRAM_BUCKETS);
@@ -58,6 +68,15 @@ public class JoinOperatorInfo
         this.logHistogramProbes = logHistogramProbes;
         this.logHistogramOutput = logHistogramOutput;
         this.lookupSourcePositions = lookupSourcePositions;
+        this.averagePositionLinkSize = averagePositionLinkSize;
+        this.positionLinkSize = positionLinkSize;
+        this.hashMapSize = hashMapSize;
+    }
+
+    @JsonProperty
+    public double getAveragePositionLinkSize()
+    {
+        return averagePositionLinkSize;
     }
 
     @JsonProperty
@@ -95,6 +114,7 @@ public class JoinOperatorInfo
                 .add("logHistogramProbes", logHistogramProbes)
                 .add("logHistogramOutput", logHistogramOutput)
                 .add("lookupSourcePositions", lookupSourcePositions)
+                .add("averagePositionLinkSize", averagePositionLinkSize)
                 .toString();
     }
 
@@ -114,7 +134,10 @@ public class JoinOperatorInfo
             mergedSourcePositions = Optional.of(this.lookupSourcePositions.orElse(0L) + other.lookupSourcePositions.orElse(0L));
         }
 
-        return new JoinOperatorInfo(this.joinType, logHistogramProbes, logHistogramOutput, mergedSourcePositions);
+        long mergedPositionLinkSize = other.positionLinkSize + this.positionLinkSize;
+        long mergedHashmapSize = other.hashMapSize + this.hashMapSize;
+        double averagePositionLinkSize = mergedHashmapSize == 0 ? 0 : (double) mergedPositionLinkSize / mergedHashmapSize;
+        return new JoinOperatorInfo(this.joinType, logHistogramProbes, logHistogramOutput, mergedSourcePositions, averagePositionLinkSize, mergedPositionLinkSize, mergedHashmapSize);
     }
 
     @Override
