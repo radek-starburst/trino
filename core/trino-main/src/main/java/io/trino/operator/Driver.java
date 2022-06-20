@@ -237,6 +237,7 @@ public class Driver
             return;
         }
 
+        // pendingSplitAssignmentUpdates to jest aktualizowane jak pojawia sie nowe splity - np. z updateTaska.
         SplitAssignment splitAssignment = pendingSplitAssignmentUpdates.getAndSet(null);
         if (splitAssignment == null) {
             return;
@@ -258,6 +259,8 @@ public class Driver
         for (ScheduledSplit newSplit : newSplits) {
             Split split = newSplit.getSplit();
 
+            // Tutaj dodajemy do istniejacego operatora splity. ScanFilterProjectOperator potem przetworzy te Splity na strony. I stworzy od razu kursor w przypadku rekordow.
+            //
             Supplier<Optional<UpdatablePageSource>> pageSource = sourceOperator.addSplit(split);
             deleteOperator.ifPresent(deleteOperator -> deleteOperator.setPageSource(pageSource));
             updateOperator.ifPresent(updateOperator -> updateOperator.setPageSource(pageSource));
@@ -381,8 +384,8 @@ public class Driver
         checkLockHeld("Lock must be held to call processInternal");
 
         handleMemoryRevoke();
-
         processNewSources();
+        // To sie dzieje w trakcie przetwarzania nowych zrodel!!!!
 
         // If there is only one operator, finish it
         // Some operators (LookupJoinOperator and HashBuildOperator) are broken and requires finish to be called continuously

@@ -212,6 +212,7 @@ public class GenericHiveRecordCursor<K, V extends Writable>
     public boolean advanceNextPosition()
     {
         try {
+//            System.out.println(String.format("Using recordReader %d from different Thread id = %d", recordReader.hashCode(), Thread.currentThread().getId()));
             if (closed || !recordReader.next(key, value)) {
                 close();
                 return false;

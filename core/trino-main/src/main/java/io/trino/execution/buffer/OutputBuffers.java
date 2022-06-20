@@ -212,6 +212,7 @@ public final class OutputBuffers
     {
         requireNonNull(buffers, "buffers is null");
 
+        // TODO: Cannot this map be mutable
         Map<OutputBufferId, Integer> newBuffers = new HashMap<>();
         for (Entry<OutputBufferId, Integer> entry : buffers.entrySet()) {
             OutputBufferId bufferId = entry.getKey();

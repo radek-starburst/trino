@@ -436,10 +436,13 @@ public class SqlTask
             // The LazyOutput buffer does not support write methods, so the actual
             // output buffer must be established before drivers are created (e.g.
             // a VALUES query).
+
+            // TODO: patrz!
             outputBuffer.setOutputBuffers(outputBuffers);
 
             // assure the task execution is only created once
             SqlTaskExecution taskExecution;
+            boolean existsTask = false;
             synchronized (this) {
                 // is task already complete?
                 TaskHolder taskHolder = taskHolderReference.get();
@@ -448,6 +451,7 @@ public class SqlTask
                 }
                 taskExecution = taskHolder.getTaskExecution();
                 if (taskExecution == null) {
+                    // Odebralismy taska w TaskResource od schedulera przez HTTP, sprawdzamy, czy task jest juz wykonwywany. W tym ifie nie jest.
                     checkState(fragment.isPresent(), "fragment must be present");
                     taskExecution = sqlTaskExecutionFactory.create(
                             session,
@@ -458,10 +462,15 @@ public class SqlTask
                             this::notifyStatusChanged);
                     taskHolderReference.compareAndSet(taskHolder, new TaskHolder(taskExecution));
                     needsPlan.set(false);
+                } else {
+                    existsTask = true;
                 }
             }
 
             if (taskExecution != null) {
+                if(existsTask) {
+
+                }
                 taskExecution.addSplitAssignments(splitAssignments);
                 taskExecution.getTaskContext().addDynamicFilter(dynamicFilterDomains);
             }

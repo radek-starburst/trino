@@ -73,6 +73,7 @@ public class SplitAssignment
         return noMoreSplits;
     }
 
+    // raczej musi byc synchronizacja tez.
     public SplitAssignment update(SplitAssignment assignment)
     {
         checkArgument(planNodeId.equals(assignment.getPlanNodeId()), "Expected assignment for node %s, but got assignment for node %s", planNodeId, assignment.getPlanNodeId());

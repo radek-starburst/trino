@@ -21,12 +21,15 @@ import io.trino.execution.RemoteTask;
 import io.trino.execution.TaskStatus;
 import io.trino.metadata.InternalNode;
 
+import java.time.Duration;
+import java.time.temporal.TemporalUnit;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -83,28 +86,39 @@ public class ScaledWriterScheduler
         return new ScheduleResult(done.get(), writers, future, WRITER_SCALING, 0);
     }
 
+    private static long start = 0;
+    static {
+        start = System.nanoTime();
+    }
+
     private int getNewTaskCount()
     {
-        if (scheduledNodes.isEmpty()) {
+        if(Duration.ofNanos(System.nanoTime() - start).toSeconds() > 60) {
+            start = System.nanoTime();
             return 1;
         }
-
-        double fullTasks = sourceTasksProvider.get().stream()
-                .filter(task -> !task.getState().isDone())
-                .map(TaskStatus::isOutputBufferOverutilized)
-                .mapToDouble(full -> full ? 1.0 : 0.0)
-                .average().orElse(0.0);
-
-        long writtenBytes = writerTasksProvider.get().stream()
-                .map(TaskStatus::getPhysicalWrittenDataSize)
-                .mapToLong(DataSize::toBytes)
-                .sum();
-
-        if ((fullTasks >= 0.5) && (writtenBytes >= (writerMinSizeBytes * scheduledNodes.size()))) {
-            return 1;
-        }
-
         return 0;
+//        if (scheduledNodes.isEmpty()) {
+//            System.out.println("exiting");
+//            return 1;
+//        }
+//
+//        double fullTasks = sourceTasksProvider.get().stream()
+//                .filter(task -> !task.getState().isDone())
+//                .map(TaskStatus::isOutputBufferOverutilized)
+//                .mapToDouble(full -> full ? 1.0 : 0.0)
+//                .average().orElse(0.0);
+//
+//        long writtenBytes = writerTasksProvider.get().stream()
+//                .map(TaskStatus::getPhysicalWrittenDataSize)
+//                .mapToLong(DataSize::toBytes)
+//                .sum();
+//
+//        if ((fullTasks >= 0.5) && (writtenBytes >= (writerMinSizeBytes * scheduledNodes.size()))) {
+//            return 1;
+//        }
+//
+//        return 0;
     }
 
     private List<RemoteTask> scheduleTasks(int count)
@@ -119,6 +133,7 @@ public class ScaledWriterScheduler
 
         ImmutableList.Builder<RemoteTask> tasks = ImmutableList.builder();
         for (InternalNode node : nodes) {
+            System.out.println("Schedule task for stage");
             Optional<RemoteTask> remoteTask = stage.scheduleTask(node, scheduledNodes.size(), ImmutableMultimap.of(), ImmutableMultimap.of());
             remoteTask.ifPresent(task -> {
                 tasks.add(task);

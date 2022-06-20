@@ -36,6 +36,7 @@ public class ScaledOutputBufferManager
             // the new buffers
             return;
         }
+//        System.out.println("ScaledOutputBufferManager::addOutputBuffer");
 
         OutputBuffers newOutputBuffers = outputBuffers.withBuffer(newBuffer, newBuffer.getId());
 

@@ -319,7 +319,9 @@ public class PipelinedStageExecution
 
         checkArgument(!tasks.containsKey(partition), "A task for partition %s already exists", partition);
 
+        // Najpewniej
         OutputBuffers outputBuffers = outputBufferManagers.get(stage.getFragment().getId()).getOutputBuffers();
+//        System.out.println(String.format("Getting outputBuffers %d from thread %d", outputBuffers.hashCode(), Thread.currentThread().getId()));
 
         Optional<RemoteTask> optionalTask = stage.createTask(
                 node,
@@ -364,6 +366,7 @@ public class PipelinedStageExecution
 
         // update output buffers
         OutputBufferId outputBufferId = new OutputBufferId(task.getTaskId().getPartitionId());
+        // TODO: Tu wyglda na to, ze aktualizuje bufory po doddaniu taska, np. w przypadku ScaledWriters to moze byc zrodlo problemu
         updateSourceTasksOutputBuffers(outputBufferManager -> outputBufferManager.addOutputBuffer(outputBufferId));
 
         return Optional.of(task);
