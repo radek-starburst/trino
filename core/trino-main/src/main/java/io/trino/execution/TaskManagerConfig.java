@@ -60,7 +60,7 @@ public class TaskManagerConfig
     private int maxDriversPerTask = Integer.MAX_VALUE;
     private Duration splitConcurrencyAdjustmentInterval = new Duration(100, TimeUnit.MILLISECONDS);
 
-    private DataSize sinkMaxBufferSize = DataSize.of(32, Unit.MEGABYTE);
+    private DataSize sinkMaxBufferSize = DataSize.of(1, Unit.MEGABYTE);
     private DataSize sinkMaxBroadcastBufferSize = DataSize.of(200, Unit.MEGABYTE);
     private DataSize maxPagePartitioningBufferSize = DataSize.of(32, Unit.MEGABYTE);
 
