@@ -310,6 +310,8 @@ public class SqlTaskExecution
                 if (sourceId.isEmpty()) {
                     continue;
                 }
+                // Bierzemy tylko drivery, ktore wykonuja ciag operatorw, ktory ma jako SoureOperator dany sourceId
+                // Tylko takim driverom dodamy okreslone splity.
                 SplitAssignment splitAssignmentUpdate = updatedUnpartitionedSources.get(sourceId.get());
                 if (splitAssignmentUpdate == null) {
                     continue;

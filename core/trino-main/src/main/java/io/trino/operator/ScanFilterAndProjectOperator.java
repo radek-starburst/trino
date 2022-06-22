@@ -16,6 +16,8 @@ package io.trino.operator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.Session;
@@ -51,8 +53,10 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -70,6 +74,8 @@ public class ScanFilterAndProjectOperator
         implements WorkProcessorSourceOperator
 {
     private final WorkProcessor<Page> pages;
+
+    static private AtomicLong blockedThreadId = new AtomicLong();
 
     @Nullable
     private RecordCursor cursor;
@@ -189,6 +195,7 @@ public class ScanFilterAndProjectOperator
             }
         }
         else if (cursor != null) {
+            System.out.println("Closing the cursor");
             cursor.close();
         }
     }
@@ -268,9 +275,17 @@ public class ScanFilterAndProjectOperator
                 source = pageSourceProvider.createPageSource(session, split, table, columns, dynamicFilter);
             }
 
+            if(blockedThreadId.get() == Thread.currentThread().getId()) {
+                System.out.println(String.format("SplitToPages before processColumnSource from thread %d", blockedThreadId.get()));
+            }
+
             if (source instanceof RecordPageSource) {
                 cursor = ((RecordPageSource) source).getCursor();
-                return ofResult(processColumnSource());
+                TransformationState<WorkProcessor<Page>> x = ofResult(processColumnSource(split));
+                if(blockedThreadId.get() == Thread.currentThread().getId()) {
+                    System.out.println(String.format("SplitToPages after processColumnSource from thread %d", blockedThreadId.get()));
+                }
+                return x;
             }
             else {
                 pageSource = source;
@@ -278,12 +293,33 @@ public class ScanFilterAndProjectOperator
             }
         }
 
-        WorkProcessor<Page> processColumnSource()
+
+        WorkProcessor<Page> processColumnSource(Split split)
         {
+            ExecutorService execService = Executors.newSingleThreadExecutor();
+            ListeningExecutorService lExecService = MoreExecutors.listeningDecorator(execService);
+            String path = "";
+            if(split.getInfo() instanceof Map) {
+                path = (String) ((Map) split.getInfo()).get("path");
+            }
+            String finalPath = path;
             return WorkProcessor
                     .create(new RecordCursorToPages(session, yieldSignal, cursorProcessor, types, pageSourceMemoryContext, outputMemoryContext))
                     .yielding(yieldSignal::isSet)
                     .blocking(() -> memoryContext.setBytes(localAggregatedMemoryContext.getBytes()));
+            //                    .blocking(() -> (ListenableFuture<Void>) lExecService.submit(() -> {
+//                        try {
+//                            if(finalPath.contains("68dfc09abf25")) {
+//                                long x = Thread.currentThread().getId();
+//                                blockedThreadId.set(x);
+//                                System.out.println(String.format("Blocking for %s from thread %d", finalPath, x));
+//                                TimeUnit.SECONDS.sleep(60);
+//                                System.out.println(String.format("Continue for %s from thread %d", finalPath, x));
+//                            }
+//                        } catch (InterruptedException e) {
+//                            throw new RuntimeException(e);
+//                        }
+//                    }
         }
 
         WorkProcessor<Page> processPageSource()

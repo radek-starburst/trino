@@ -106,7 +106,7 @@ class OutputBufferMemoryManager
                     // Complete future in a new thread to avoid making a callback on the caller thread.
                     // This make is easier for callers to use this class since they can update the memory
                     // usage while holding locks.
-                    notifyUnblocked = this.bufferBlockedFuture;
+                     notifyUnblocked = this.bufferBlockedFuture;
                     this.bufferBlockedFuture = null;
                 }
             }

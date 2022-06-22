@@ -93,7 +93,7 @@ public class ScaledWriterScheduler
 
     private int getNewTaskCount()
     {
-        if(Duration.ofNanos(System.nanoTime() - start).toSeconds() > 60) {
+        if(Duration.ofNanos(System.nanoTime() - start).toSeconds() > 5) {
             start = System.nanoTime();
             return 1;
         }
