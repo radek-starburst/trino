@@ -27,7 +27,7 @@ public class PlanNodeId
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(PlanNodeId.class).instanceSize();
 
-    private final String id;
+    public final String id;
 
     @JsonCreator
     public PlanNodeId(String id)

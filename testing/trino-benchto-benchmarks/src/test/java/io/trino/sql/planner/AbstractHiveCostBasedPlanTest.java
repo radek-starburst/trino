@@ -217,21 +217,36 @@ public abstract class AbstractHiveCostBasedPlanTest
         JoinInsightVisitor joinInsightVisitor = new JoinInsightVisitor();
         plan.getRoot().accept(joinInsightVisitor, null);
         StringBuilder result = new StringBuilder();
-        result.append(String.format("Type,DistributionType,JoiningColumnType,ColumnLeft,ColumnRight%n"));
+        result.append(String.format("Type;DistributionType;Criteria;PlanNodeId%n"));
         for(JoinInfo joinInfo : joinInsightVisitor.joins) {
-            String joinType = !joinInfo.isCross ? joinInfo.type.toString() : "cross";
-            result.append(String.format("%s,%s,,,%n", joinType, joinInfo.distributionType.get()));
-            for(JoinNode.EquiJoinClause criterium : joinInfo.criteria) {
-                Assignment left = lookupForColumnBySymbol(criterium.getLeft(), joinInfo.leftAssignments);
-                Assignment right = lookupForColumnBySymbol(criterium.getRight(), joinInfo.rightAssignments);
-                result.append(String.format(",,%s,%s,%s%n",
-                        resolveJoiningType(left, right),
-                        resolveColumnName(left.columnHandle, left.tableHandle),
-                        resolveColumnName(right.columnHandle, right.tableHandle))
-                );
+            if (joinInfo.isCross) {
+                continue;
             }
-        }
+            String joinType = joinInfo.type.toString();
+            String criteria = generateCriteria(joinInfo);
+            result.append(String.format("%s;%s;%s;%s%n", joinType, joinInfo.distributionType.get(), criteria, joinInfo.planNodeId));
+          }
         return result.toString();
+    }
+
+    private String generateCriteria(JoinInfo joinInfo) {
+        int criteriaLength = joinInfo.criteria.size();
+        int i = 0;
+        StringBuilder sb = new StringBuilder();
+        for(JoinNode.EquiJoinClause criterium : joinInfo.criteria) {
+            Assignment left = lookupForColumnBySymbol(criterium.getLeft(), joinInfo.leftAssignments);
+            Assignment right = lookupForColumnBySymbol(criterium.getRight(), joinInfo.rightAssignments);
+            sb.append(String.format("%s=%s[%s]",
+                    resolveColumnName(left.columnHandle, left.tableHandle),
+                    resolveColumnName(right.columnHandle, right.tableHandle),
+                    resolveJoiningType(left, right))
+            );
+            if(i < criteriaLength - 1) {
+                sb.append(",");
+            }
+            i++;
+        }
+        return sb.toString();
     }
 
     private Assignment lookupForColumnBySymbol(Symbol symbol, Map<String, Assignment> assignmentMap) {
@@ -285,17 +300,20 @@ public abstract class AbstractHiveCostBasedPlanTest
         private final Map<String, Assignment> leftAssignments;
         private final Map<String, Assignment> rightAssignments;
         private final JoinNode.Type type;
+
+        private final String planNodeId;
         private final Optional<JoinNode.DistributionType> distributionType;
 
         private final boolean isCross;
 
-        public JoinInfo(List<JoinNode.EquiJoinClause> criteria, Map<String, Assignment> assignmentsLHS, Map<String, Assignment> assignmentsRHS, Optional<JoinNode.DistributionType> distributionType, JoinNode.Type type, boolean isCross) {
+        public JoinInfo(List<JoinNode.EquiJoinClause> criteria, Map<String, Assignment> assignmentsLHS, Map<String, Assignment> assignmentsRHS, Optional<JoinNode.DistributionType> distributionType, JoinNode.Type type, boolean isCross, String planNodeId) {
             this.criteria = criteria;
             this.leftAssignments = assignmentsLHS;
             this.rightAssignments = assignmentsRHS;
             this.distributionType = distributionType;
             this.type = type;
             this.isCross = isCross;
+            this.planNodeId = planNodeId;
         }
 
         @Override
@@ -356,7 +374,7 @@ public abstract class AbstractHiveCostBasedPlanTest
                     .flatMap(it -> ((TableScanNode) it).getAssignments().entrySet().stream().map(e -> new Assignment(e.getKey().getName(), Optional.of((HiveColumnHandle) e.getValue()), Optional.of(((TableScanNode) it).getTable()))))
                     .forEach(it -> rightAssignments.put(it.name, it));
 
-            JoinInfo joinInfo = new JoinInfo(criteria, leftAssignments, rightAssignments, node.getDistributionType(), node.getType(), node.isCrossJoin());
+            JoinInfo joinInfo = new JoinInfo(criteria, leftAssignments, rightAssignments, node.getDistributionType(), node.getType(), node.isCrossJoin(), node.getId().id);
             joins.add(joinInfo);
 
             node.getLeft().accept(this, context);
