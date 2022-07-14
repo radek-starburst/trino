@@ -111,16 +111,16 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         protected static final int ROWS_PER_PAGE = 1024;
 
-        @Param({"varchar", "bigint", "all"})
+        @Param({"all"})
         protected String hashColumns = "bigint";
 
-        @Param({"false", "true"})
+        @Param({"false"})
         protected boolean buildHashEnabled;
 
-        @Param({"1", "5"})
+        @Param({"1"})
         protected int buildRowsRepetition = 1;
 
-        @Param({"10", "100", "10000", "100000", "1000000", "8000000"})
+        @Param({"100000"})
         protected int buildRowsNumber = 8_000_000;
 
         protected ExecutorService executor;
@@ -206,15 +206,15 @@ public class BenchmarkHashBuildAndJoinOperators
     public static class JoinContext
             extends BuildContext
     {
-        protected static final int PROBE_ROWS_NUMBER = 1_400_000;
+        protected static final int PROBE_ROWS_NUMBER = 5_400_000;
 
-        @Param({"0.1", "1", "2"})
+        @Param({"2"})
         protected double matchRate = 1;
 
-        @Param({"bigint", "all"})
+        @Param({"all"})
         protected String outputColumns = "bigint";
 
-        @Param({"1", "16"})
+        @Param({"16"})
         protected int partitionCount = 1;
 
         protected List<Page> probePages;
@@ -500,14 +500,13 @@ public class BenchmarkHashBuildAndJoinOperators
             throws RunnerException, IOException {
         String system = System.getProperty("os.name");
 
-        ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD");
         String outputDir = String.format(
-                "jmh/%s_x_%s", IOUtils.toString(pb.start().getInputStream(), StandardCharsets.UTF_8).replace("/", "_"), LocalDateTime.now());
+                "jmh/%s", LocalDateTime.now());
         new File(outputDir).mkdirs();
 
         Function<ChainedOptionsBuilder, ChainedOptionsBuilder> baseOptionsBuilderConsumer = (options) ->
                 options
-                        .output(Path.of(outputDir, "stdout.log").toString())
+//                        .output(Path.of(outputDir, "stdout.log").toString())
                         .jvmArgsAppend(
                                 "-Xmx32g",
                                 "-XX:+UnlockDiagnosticVMOptions",
@@ -531,6 +530,5 @@ public class BenchmarkHashBuildAndJoinOperators
                                 .build())
                 .includeMethod("benchmarkJoinHash")
                 .run();
-
     }
 }

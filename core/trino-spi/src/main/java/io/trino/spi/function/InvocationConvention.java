@@ -31,6 +31,11 @@ public class InvocationConvention
         return new InvocationConvention(Arrays.asList(argumentConventions), returnConvention, false, false);
     }
 
+    public static InvocationConvention simpleConvention(InvocationReturnConvention returnConvention, InvocationArgumentConvention argumentConventions1, InvocationArgumentConvention argumentConventions2)
+    {
+        return new InvocationConvention(List.of(argumentConventions1, argumentConventions2), returnConvention, false, false);
+    }
+
     public InvocationConvention(
             List<InvocationArgumentConvention> argumentConventionList,
             InvocationReturnConvention returnConvention,
