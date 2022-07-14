@@ -450,7 +450,7 @@ public class PagesIndex
     {
         try {
             return joinCompiler.compilePagesHashStrategyFactory(types, joinChannels, outputChannels)
-                    .createPagesHashStrategy(ImmutableList.copyOf(channels), hashChannel);
+                    .createPagesHashStrategy(ImmutableList.copyOf(channels), hashChannel, joinCompiler.getTypeOperators(), types);
         }
         catch (Exception e) {
             log.error(e, "Lookup source compile failed for types=%s error=%s", types, e);
@@ -524,7 +524,7 @@ public class PagesIndex
                     filterFunctionFactory,
                     sortChannel,
                     searchFunctionFactories,
-                    hashArraySizeSupplier);
+                    hashArraySizeSupplier, types, joinCompiler.getTypeOperators());
         }
 
         PagesHashStrategy hashStrategy = new SimplePagesHashStrategy(

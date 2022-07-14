@@ -200,7 +200,7 @@ public class StreamingAggregationOperator
                     .createPagesHashStrategy(
                             sourceTypes.stream()
                                     .map(type -> ImmutableList.<Block>of())
-                                    .collect(toImmutableList()), OptionalInt.empty());
+                                    .collect(toImmutableList()), OptionalInt.empty(), joinCompiler.getTypeOperators(), groupByTypes);
         }
 
         @Override

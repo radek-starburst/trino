@@ -83,7 +83,7 @@ public class TestJoinCompiler
             hashChannel = OptionalInt.of(1);
             channels = ImmutableList.of(channel, hashChannelBuilder.build());
         }
-        PagesHashStrategy hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(channels, hashChannel);
+        PagesHashStrategy hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(channels, hashChannel, typeOperators, joinTypes);
 
         // verify channel count
         assertEquals(hashStrategy.getChannelCount(), 1);
@@ -203,7 +203,7 @@ public class TestJoinCompiler
         }
 
         PagesHashStrategyFactory pagesHashStrategyFactory = joinCompiler.compilePagesHashStrategyFactory(types, joinChannels, Optional.of(outputChannels));
-        PagesHashStrategy hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(channels, hashChannel);
+        PagesHashStrategy hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(channels, hashChannel, typeOperators, joinTypes);
         // todo add tests for filter function
         PagesHashStrategy expectedHashStrategy = new SimplePagesHashStrategy(types, outputChannels, channels, joinChannels, hashChannel, Optional.empty(), blockTypeOperators);
 
@@ -320,7 +320,7 @@ public class TestJoinCompiler
                 BlockAssertions.createDoubleSequenceBlock(15, 25));
 
         List<List<Block>> channels = ImmutableList.of(channel);
-        PagesHashStrategy hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(channels, OptionalInt.empty());
+        PagesHashStrategy hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(channels, OptionalInt.empty(), typeOperators, joinTypes);
 
         // verify channel count
         assertEquals(hashStrategy.getChannelCount(), 1);

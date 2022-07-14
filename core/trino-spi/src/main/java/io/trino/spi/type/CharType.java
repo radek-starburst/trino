@@ -185,7 +185,7 @@ public final class CharType
     }
 
     @ScalarOperator(EQUAL)
-    private static boolean equalOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
+    public static boolean equalOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
     {
         int leftLength = leftBlock.getSliceLength(leftPosition);
         int rightLength = rightBlock.getSliceLength(rightPosition);

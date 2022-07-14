@@ -20,6 +20,8 @@ import io.trino.spi.block.BlockBuilderStatus;
 import io.trino.spi.block.LongArrayBlockBuilder;
 import io.trino.spi.block.PageBuilderStatus;
 import io.trino.spi.connector.ConnectorSession;
+import io.trino.spi.function.BlockIndex;
+import io.trino.spi.function.BlockPosition;
 import io.trino.spi.function.ScalarOperator;
 
 import java.math.BigInteger;
@@ -37,7 +39,7 @@ import static io.trino.spi.function.OperatorType.XX_HASH_64;
 import static io.trino.spi.type.TypeOperatorDeclaration.extractOperatorDeclaration;
 import static java.lang.invoke.MethodHandles.lookup;
 
-final class ShortDecimalType
+public final class ShortDecimalType
         extends DecimalType
 {
     private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(ShortDecimalType.class, lookup(), long.class);
@@ -131,6 +133,11 @@ final class ShortDecimalType
     private static boolean equalOperator(long left, long right)
     {
         return left == right;
+    }
+
+    public static boolean equalOperator(Block left, int leftPosition, Block right, int rightPosition)
+    {
+        return left.getLong(leftPosition, 0) == right.getLong(rightPosition, 0);
     }
 
     @ScalarOperator(HASH_CODE)

@@ -139,7 +139,7 @@ public class MultiChannelGroupByHash
         }
         this.channelBuilders = channelBuilders.build();
         PagesHashStrategyFactory pagesHashStrategyFactory = joinCompiler.compilePagesHashStrategyFactory(this.types, outputChannels.build());
-        hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(this.channelBuilders, this.precomputedHashChannel);
+        hashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(this.channelBuilders, this.precomputedHashChannel, joinCompiler.getTypeOperators(), this.types);
 
         startNewPage();
 
