@@ -50,9 +50,17 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.profile.*;
 import org.openjdk.jmh.runner.RunnerException;
+import org.openjdk.jmh.runner.options.ChainedOptionsBuilder;
+import org.testcontainers.shaded.org.apache.commons.io.IOUtils;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -61,6 +69,7 @@ import java.util.OptionalInt;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -87,7 +96,7 @@ import static org.openjdk.jmh.annotations.Mode.AverageTime;
 @Threads(Threads.MAX)
 @OutputTimeUnit(MILLISECONDS)
 @BenchmarkMode(AverageTime)
-@Fork(3)
+@Fork(1)
 @Warmup(iterations = 5)
 @Measurement(iterations = 10, time = 2, timeUnit = SECONDS)
 public class BenchmarkHashBuildAndJoinOperators
@@ -102,16 +111,16 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         protected static final int ROWS_PER_PAGE = 1024;
 
-        @Param({"varchar", "bigint", "all"})
+        @Param({"all"})
         protected String hashColumns = "bigint";
 
-        @Param({"false", "true"})
+        @Param({"false"})
         protected boolean buildHashEnabled;
 
-        @Param({"1", "5"})
+        @Param({"1"})
         protected int buildRowsRepetition = 1;
 
-        @Param({"10", "100", "10000", "100000", "1000000", "8000000"})
+        @Param({"100000"})
         protected int buildRowsNumber = 8_000_000;
 
         protected ExecutorService executor;
@@ -199,13 +208,13 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         protected static final int PROBE_ROWS_NUMBER = 1_400_000;
 
-        @Param({"0.1", "1", "2"})
+        @Param({"2"})
         protected double matchRate = 1;
 
-        @Param({"bigint", "all"})
+        @Param({"all"})
         protected String outputColumns = "bigint";
 
-        @Param({"1", "16"})
+        @Param({"16"})
         protected int partitionCount = 1;
 
         protected List<Page> probePages;
@@ -488,8 +497,38 @@ public class BenchmarkHashBuildAndJoinOperators
     }
 
     public static void main(String[] args)
-            throws RunnerException
-    {
-        benchmark(BenchmarkHashBuildAndJoinOperators.class).run();
+            throws RunnerException, IOException {
+        String system = System.getProperty("os.name");
+
+        String outputDir = String.format(
+                "jmh/%s", LocalDateTime.now());
+        new File(outputDir).mkdirs();
+
+        Function<ChainedOptionsBuilder, ChainedOptionsBuilder> baseOptionsBuilderConsumer = (options) ->
+                options
+//                        .output(Path.of(outputDir, "stdout.log").toString())
+                        .jvmArgsAppend(
+                                "-Xmx32g",
+                                "-XX:+UnlockDiagnosticVMOptions",
+                                "-XX:+PrintAssembly",
+                                "-XX:+LogCompilation",
+                                "-XX:+TraceClassLoading");
+        Function<ChainedOptionsBuilder, ChainedOptionsBuilder> profilers = system.equals("Linux")
+                ? (options) ->
+                options
+                        .addProfiler(LinuxPerfProfiler.class, String.format("saveLogTo=%s", outputDir))
+                        .addProfiler(LinuxPerfNormProfiler.class, String.format("saveLogTo=%s", outputDir))
+                        .addProfiler(LinuxPerfAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir))
+                :  (options) ->
+                options
+                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", outputDir))
+                        .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
+
+        benchmark(BenchmarkHashBuildAndJoinOperators.class)
+                .withOptions(optionsBuilder ->
+                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
+                                .build())
+                .includeMethod("benchmarkJoinHash")
+                .run();
     }
 }

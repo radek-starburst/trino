@@ -1012,7 +1012,14 @@ public class JoinCompiler
                 "equal",
                 equalOperator.type(),
                 leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
-        return BytecodeExpressions.equal(equalInvocation, getStatic(Boolean.class, "TRUE"));
+        if (type == BigintType.BIGINT) {
+            equalInvocation = BytecodeExpressions.invokeStatic(BigintType.class, "equalOperator", boolean.class,
+                    leftBlock,
+                    leftBlockPosition,
+                    rightBlock,
+                    rightBlockPosition);
+        }
+        return equalInvocation.cast(type(boolean.class));
     }
 
     public static class LookupSourceSupplierFactory

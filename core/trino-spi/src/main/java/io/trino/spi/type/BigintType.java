@@ -15,10 +15,13 @@ package io.trino.spi.type;
 
 import io.trino.spi.block.Block;
 import io.trino.spi.connector.ConnectorSession;
+import io.trino.spi.function.ScalarOperator;
 
 import java.util.Optional;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
+
+import static io.trino.spi.function.OperatorType.EQUAL;
 
 public final class BigintType
         extends AbstractLongType
@@ -58,6 +61,13 @@ public final class BigintType
     {
         return Optional.of(new Range(Long.MIN_VALUE, Long.MAX_VALUE));
     }
+
+    @ScalarOperator(EQUAL)
+    public static boolean equalOperator(Block left, int leftPosition, Block right, int rightPosition)
+    {
+        return left.getLong(leftPosition, 0) == right.getLong(rightPosition, 0);
+    }
+
 
     @Override
     public Optional<Stream<?>> getDiscreteValues(Range range)
