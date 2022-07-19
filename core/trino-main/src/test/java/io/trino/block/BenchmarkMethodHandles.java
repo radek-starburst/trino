@@ -53,6 +53,10 @@ public class BenchmarkMethodHandles
             MethodType.methodType(int.class, BenchmarkMethodHandles.class, int.class, int.class));
     private static final MethodHandle invoker = callSite.dynamicInvoker();
 
+    public BenchmarkMethodHandles() {
+        callSite.setTarget(composed);
+    }
+
     static {
         try {
             mhCF = MethodHandles.lookup().findVirtual(BenchmarkMethodHandles.class, "compute",
@@ -61,7 +65,6 @@ public class BenchmarkMethodHandles
                     MethodType.methodType(int.class, int.class));
             composedF = MethodHandles.dropArguments(mhC, 2, int.class);
             composed = MethodHandles.dropArguments(mhC, 2, int.class);
-            callSite.setTarget(composed);
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
 
@@ -124,9 +127,9 @@ public class BenchmarkMethodHandles
                         .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
 
         benchmark(BenchmarkMethodHandles.class)
-//                .includeMethod("benchmarkStaticComposedHackedViaStaticFinalCallSite")
-//                .includeMethod("benchmarkStaticComposed")
-//                .includeMethod("benchmarkStaticFinalComposed")
+                .includeMethod("benchmarkStaticComposedHackedViaStaticFinalCallSite")
+                .includeMethod("benchmarkStaticComposed")
+                .includeMethod("benchmarkStaticFinalComposed")
 //                .withOptions(optionsBuilder ->
 //                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
 //                                .build())

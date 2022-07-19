@@ -511,8 +511,7 @@ public class BenchmarkHashBuildAndJoinOperators
                                 "-Xmx32g",
                                 "-XX:+UnlockDiagnosticVMOptions",
                                 "-XX:+PrintAssembly",
-                                "-XX:+LogCompilation",
-                                "-XX:+TraceClassLoading");
+                                "-XX:+LogCompilation");
         Function<ChainedOptionsBuilder, ChainedOptionsBuilder> profilers = system.equals("Linux")
                 ? (options) ->
                 options
@@ -525,9 +524,9 @@ public class BenchmarkHashBuildAndJoinOperators
                         .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
 
         benchmark(BenchmarkHashBuildAndJoinOperators.class)
-                .withOptions(optionsBuilder ->
-                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
-                                .build())
+//                .withOptions(optionsBuilder ->
+//                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
+//                                .build())
                 .includeMethod("benchmarkJoinHash")
                 .run();
     }

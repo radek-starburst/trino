@@ -30,6 +30,8 @@ import io.airlift.bytecode.control.ForLoop;
 import io.airlift.bytecode.control.IfStatement;
 import io.airlift.bytecode.expression.BytecodeExpression;
 import io.airlift.bytecode.expression.BytecodeExpressions;
+import static io.airlift.bytecode.expression.BytecodeExpressions.invokeStatic;
+import static io.airlift.bytecode.expression.BytecodeExpressions.constantClass;
 import io.airlift.bytecode.instruction.LabelNode;
 import io.airlift.jmx.CacheStatsMBean;
 import io.trino.Session;
@@ -188,22 +190,27 @@ public class JoinCompiler
         return instanceSize;
     }
 
-    private static FieldDefinition generateEqualOperator(ClassDefinition definition, String name)
+    private static FieldDefinition generateMutableCallSite(ClassDefinition definition, String name)
     {
-
-//        // Store instance size in static field
-        FieldDefinition instanceSize = definition.declareField(a(PRIVATE, STATIC, FINAL), name, long.class);
+        FieldDefinition callsite = definition.declareField(a(PRIVATE, STATIC, FINAL), name, MutableCallSite.class);
         definition.getClassInitializer()
                 .getBody()
-                .comment("equalOperator = ClassLayout.parseClass(%s.class).instanceSize()", definition.getName())
-//                .invokeStatic(MethodType.class, "methodType", MethodType.class, (int.class, BenchmarkMethodHandles.class, int.class, int.class))
-//                .push(definition.getType())
+                .append(BytecodeExpressions.newInstance(MutableCallSite.class,
+                        BytecodeExpressions.invokeStatic(MethodType.class, "methodType", MethodType.class, constantClass(Boolean.class),
+                                BytecodeExpressions.newArray(type(Class[].class), constantClass(Block.class), constantClass(int.class), constantClass(Block.class), constantClass(int.class)))))
+                .putStaticField(callsite);
+        return callsite;
+    }
 
-                .invokeStatic(ClassLayout.class, "parseClass", ClassLayout.class, Class.class)
-                .invokeVirtual(ClassLayout.class, "instanceSize", int.class)
-                .intToLong()
-                .putStaticField(instanceSize);
-        return instanceSize;
+    private static FieldDefinition generateDynamicInvoker(ClassDefinition definition, String name, FieldDefinition callsite)
+    {
+        FieldDefinition invoker = definition.declareField(a(PRIVATE, STATIC, FINAL), name, MethodHandle.class);
+        definition.getClassInitializer()
+                .getBody()
+                .getStaticField(callsite)
+                .invokeVirtual(MutableCallSite.class, "dynamicInvoker", MethodHandle.class)
+                .putStaticField(invoker);
+        return invoker;
     }
 
     private Class<? extends PagesHashStrategy> internalCompileHashStrategy(List<Type> types, List<Integer> outputChannels, List<Integer> joinChannels, Optional<Integer> sortChannel, TypeOperators typeOperators)
@@ -224,8 +231,7 @@ public class JoinCompiler
             channelFields.add(channelField);
         }
         List<Type> joinChannelTypes = new ArrayList<>();
-        List<FieldDefinition> equalOperatorFieldDefs = new ArrayList<>();
-        List<FieldDefinition> equalOperatorFunctionsFieldDefs = new ArrayList<>();
+        List<FieldDefinition> invokers = new ArrayList<>();
         List<FieldDefinition> joinChannelFields = new ArrayList<>();
         for (int i = 0; i < joinChannels.size(); i++) {
             joinChannelTypes.add(types.get(joinChannels.get(i)));
@@ -234,27 +240,21 @@ public class JoinCompiler
         }
         FieldDefinition hashChannelField = classDefinition.declareField(a(PRIVATE, FINAL), "hashChannel", type(List.class, Block.class));
 
-        for (int i = 0; i < joinChannels.size(); i++) {
-            FieldDefinition equalOperatorFieldDef = classDefinition.declareField(a(PRIVATE, STATIC, FINAL), "equalOperator_cs" + i, MutableCallSite.class);
 
-            FieldDefinition equalOperatorFFieldDef = classDefinition.declareField(a(PRIVATE, FINAL), "equalOperatorF_" + i, QFunction.class);
-            equalOperatorFieldDefs.add(equalOperatorFieldDef);
-        }
-
-        generateConstructor(classDefinition, joinChannels, sizeField, instanceSizeField, channelFields, joinChannelFields, hashChannelField, equalOperatorFieldDefs, equalOperatorFunctionsFieldDefs);
+        generateConstructor(classDefinition, joinChannels, sizeField, instanceSizeField, channelFields, joinChannelFields, hashChannelField, invokers);
         generateGetChannelCountMethod(classDefinition, outputChannels.size());
         generateGetSizeInBytesMethod(classDefinition, sizeField);
         generateAppendToMethod(classDefinition, callSiteBinder, types, outputChannels, channelFields);
         generateHashPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, hashChannelField);
         generateHashRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
-        generateRowEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, equalOperatorFieldDefs);
+        generateRowEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, invokers);
         generateRowNotDistinctFromRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
-        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true, equalOperatorFieldDefs, equalOperatorFunctionsFieldDefs);
-        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false, equalOperatorFieldDefs, equalOperatorFunctionsFieldDefs);
+        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true, invokers);
+        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false, invokers);
         generatePositionNotDistinctFromRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
         generatePositionNotDistinctFromRowWithPageMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
-        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true, equalOperatorFieldDefs, equalOperatorFunctionsFieldDefs);
-        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false, equalOperatorFieldDefs, equalOperatorFunctionsFieldDefs);
+        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true, invokers);
+        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false, invokers);
         generatePositionNotDistinctFromPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
         generateIsPositionNull(classDefinition, joinChannelFields);
         generateCompareSortChannelPositionsMethod(classDefinition, callSiteBinder, types, channelFields, sortChannel);
@@ -274,9 +274,7 @@ public class JoinCompiler
             FieldDefinition instanceSizeField,
             List<FieldDefinition> channelFields,
             List<FieldDefinition> joinChannelFields,
-            FieldDefinition hashChannelField,
-            List<FieldDefinition> equalOperatorFieldDefs,
-            List<FieldDefinition> equalOperatorFunctionsFieldDefs)
+            FieldDefinition hashChannelField, List<FieldDefinition> invokers)
     {
         Parameter channels = arg("channels", type(List.class, type(List.class, Block.class)));
         Parameter hashChannel = arg("hashChannel", type(OptionalInt.class));
@@ -335,20 +333,24 @@ public class JoinCompiler
             constructor.append(thisVariable.setField(joinChannelFields.get(index), joinChannel));
         }
         for (int index = 0; index < joinChannelFields.size(); index++) {
-            constructor.append(setStatic(equalOperatorFieldDefs.get(index),
-                typeOperators.invoke(
-                        "getEqualOperator",
-                        MethodHandle.class,
-                        joinChannelTypes.invoke("get", Object.class, BytecodeExpressions.constantInt(index)).cast(Type.class),
-                        BytecodeExpressions.invokeStatic(
-                                InvocationConvention.class,
-                                "simpleConvention",
-                                InvocationConvention.class,
-                                invokeStatic(InvocationConvention.InvocationReturnConvention.class, "valueOf", InvocationConvention.InvocationReturnConvention.class, constantString("NULLABLE_RETURN")),
-                                invokeStatic(InvocationConvention.InvocationArgumentConvention.class, "valueOf", InvocationConvention.InvocationArgumentConvention.class, constantString("BLOCK_POSITION")),
-                                invokeStatic(InvocationConvention.InvocationArgumentConvention.class, "valueOf", InvocationConvention.InvocationArgumentConvention.class, constantString("BLOCK_POSITION"))
-                        ))
-            ));
+            FieldDefinition cs = generateMutableCallSite(classDefinition, String.format("cs_%d", index));
+            FieldDefinition invoker = generateDynamicInvoker(classDefinition, String.format("invoker_%d", index), cs);
+            invokers.add(invoker);
+            constructor.append(
+                    getStatic(cs).invoke("setTarget", void.class,
+                            typeOperators.invoke(
+                                    "getEqualOperator",
+                                    MethodHandle.class,
+                                    joinChannelTypes.invoke("get", Object.class, BytecodeExpressions.constantInt(index)).cast(Type.class),
+                                    BytecodeExpressions.invokeStatic(
+                                            InvocationConvention.class,
+                                            "simpleConvention",
+                                            InvocationConvention.class,
+                                            invokeStatic(InvocationConvention.InvocationReturnConvention.class, "valueOf", InvocationConvention.InvocationReturnConvention.class, constantString("NULLABLE_RETURN")),
+                                            invokeStatic(InvocationConvention.InvocationArgumentConvention.class, "valueOf", InvocationConvention.InvocationArgumentConvention.class, constantString("BLOCK_POSITION")),
+                                            invokeStatic(InvocationConvention.InvocationArgumentConvention.class, "valueOf", InvocationConvention.InvocationArgumentConvention.class, constantString("BLOCK_POSITION"))
+                                    )))
+            );
         }
         Variable methodHandle = constructorDefinition.getScope().declareVariable(MethodHandle.class, "methodHandle");
         Variable lookup = constructorDefinition.getScope().declareVariable(MethodHandles.Lookup.class, "lookup");
@@ -388,7 +390,6 @@ public class JoinCompiler
                         dmh,
                         dmh.invoke("type", MethodType.class)
                     )));
-            constructor.append(thisVariable.setField(equalOperatorFunctionsFieldDefs.get(index), cs.invoke("getTarget", MethodHandle.class).invoke("invokeExact", QFunction.class)));
         }
 
         constructor.comment("Set hashChannel");
@@ -591,7 +592,7 @@ public class JoinCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             List<Type> joinChannelTypes,
-            List<FieldDefinition> equalOperatorFieldDefs)
+            List<FieldDefinition> invokers)
     {
         Parameter leftPosition = arg("leftPosition", int.class);
         Parameter leftPage = arg("leftPage", Page.class);
@@ -622,7 +623,7 @@ public class JoinCompiler
                             leftPosition,
                             rightBlock,
                             rightPosition,
-                            BytecodeExpressions.getStatic(equalOperatorFieldDefs.get(index))))
+                            BytecodeExpressions.getStatic(invokers.get(index))))
                     .ifTrueGoto(checkNextField)
                     .push(false)
                     .retBoolean()
@@ -688,8 +689,7 @@ public class JoinCompiler
             List<Type> joinChannelTypes,
             List<FieldDefinition> joinChannelFields,
             boolean ignoreNulls,
-            List<FieldDefinition> equalOperatorFieldDefs,
-            List<FieldDefinition> equalOperatorFunctionsFieldDefs)
+            List<FieldDefinition> invokers)
     {
         Parameter leftBlockIndex = arg("leftBlockIndex", int.class);
         Parameter leftBlockPosition = arg("leftBlockPosition", int.class);
@@ -717,10 +717,10 @@ public class JoinCompiler
             BytecodeExpression rightBlock = rightPage.invoke("getBlock", Block.class, constantInt(index));
             BytecodeNode equalityCondition;
             if (ignoreNulls) {
-                equalityCondition = typeEqualsIgnoreNulls(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightPosition, thisVariable.getField(equalOperatorFunctionsFieldDefs.get(index)));
+                equalityCondition = typeEqualsIgnoreNulls(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightPosition, getStatic(invokers.get(index)));
             }
             else {
-                equalityCondition = typeEquals(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightPosition, thisVariable.getField(equalOperatorFunctionsFieldDefs.get(index)));
+                equalityCondition = typeEquals(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightPosition, getStatic(invokers.get(index)));
             }
 
             LabelNode checkNextField = new LabelNode("checkNextField");
@@ -866,8 +866,7 @@ public class JoinCompiler
             List<Type> joinChannelTypes,
             List<FieldDefinition> joinChannelFields,
             boolean ignoreNulls,
-            List<FieldDefinition> equalOperatorFieldDefs,
-            List<FieldDefinition> equalOperatorFunctionFieldDefs)
+            List<FieldDefinition> invokers)
     {
         Parameter leftBlockIndex = arg("leftBlockIndex", int.class);
         Parameter leftBlockPosition = arg("leftBlockPosition", int.class);
@@ -898,10 +897,10 @@ public class JoinCompiler
 
             BytecodeNode equalityCondition;
             if (ignoreNulls) {
-                equalityCondition = typeEqualsIgnoreNulls(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition, thisVariable.getField(equalOperatorFunctionFieldDefs.get(index)));
+                equalityCondition = typeEqualsIgnoreNulls(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition, getStatic(invokers.get(index)));
             }
             else {
-                equalityCondition = typeEquals(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition, thisVariable.getField(equalOperatorFunctionFieldDefs.get(index)));
+                equalityCondition = typeEquals(callSiteBinder, type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition, getStatic(invokers.get(index)));
             }
 
             LabelNode checkNextField = new LabelNode("checkNextField");
@@ -1095,10 +1094,10 @@ public class JoinCompiler
             BytecodeExpression leftBlockPosition,
             BytecodeExpression rightBlock,
             BytecodeExpression rightBlockPosition,
-            BytecodeExpression equalOperatorQFunction)
+            BytecodeExpression invoker)
     {
-        BytecodeExpression equalInvocation = equalOperatorQFunction.invoke("apply", Boolean.class, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
-        return BytecodeExpressions.equal(equalInvocation, getStatic(Boolean.class, "TRUE"));
+        BytecodeExpression equalInvocation = invoker.invoke("invokeExact", Boolean.class, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
+        return equalInvocation.cast(boolean.class);
     }
 
     public static class LookupSourceSupplierFactory
