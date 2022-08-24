@@ -20,7 +20,12 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.BlockBuilderStatus;
 import io.trino.spi.block.LongArrayBlockBuilder;
 import io.trino.spi.block.PageBuilderStatus;
+import io.trino.spi.function.BlockIndex;
+import io.trino.spi.function.BlockPosition;
 import io.trino.spi.function.ScalarOperator;
+import io.trino.spi.function.SqlNullable;
+
+import java.util.concurrent.atomic.AtomicLong;
 
 import static io.trino.spi.function.OperatorType.COMPARISON_UNORDERED_LAST;
 import static io.trino.spi.function.OperatorType.EQUAL;
@@ -129,12 +134,19 @@ public abstract class AbstractLongType
         return rotateLeft(value * 0xC2B2AE3D27D4EB4FL, 31) * 0x9E3779B185EBCA87L;
     }
 
+//    @ScalarOperator(EQUAL)
+//    private static boolean equalOperator(long left, long right)
+//    {
+//        return left == right;
+//    }
+
     @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long left, long right)
+    private static Boolean equalOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
     {
-        return left == right;
+        return leftBlock.getLong(leftPosition, 0) == rightBlock.getLong(rightPosition, 0);
     }
 
+    private static AtomicLong counter = new AtomicLong();
     @ScalarOperator(HASH_CODE)
     private static long hashCodeOperator(long value)
     {
