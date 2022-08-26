@@ -103,7 +103,7 @@ public class NodeTaskMap
                     return;
                 }
 
-                task.addStateChangeListener(taskStatus -> {
+                task.addTaskStatusChangeListener(taskStatus -> {
                     if (taskStatus.getState().isDone()) {
                         remoteTasks.remove(task);
                     }

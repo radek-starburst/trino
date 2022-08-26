@@ -66,7 +66,7 @@ public class MemoryTrackingRemoteTaskFactory
                 estimatedMemory,
                 summarizeTaskInfo);
 
-        task.addStateChangeListener(new UpdatePeakMemory(stateMachine));
+        task.addTaskStatusChangeListener(new UpdatePeakMemory(stateMachine));
         return task;
     }
 

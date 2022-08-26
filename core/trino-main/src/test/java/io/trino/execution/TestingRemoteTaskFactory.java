@@ -228,11 +228,16 @@ public class TestingRemoteTaskFactory
         }
 
         @Override
-        public void addStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener)
+        public void addTaskStatusChangeListener(StateChangeListener<TaskStatus> stateChangeListener)
         {
             taskStateMachine.addStateChangeListener(newValue -> stateChangeListener.stateChanged(getTaskStatus()));
         }
 
+        @Override
+        public void addTaskStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener)
+        {
+            throw new UnsupportedOperationException();
+        }
         @Override
         public void addFinalTaskInfoListener(StateChangeListener<TaskInfo> stateChangeListener)
         {

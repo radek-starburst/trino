@@ -326,7 +326,7 @@ public class PipelinedStageExecution
         task.addSplits(exchangeSplits.build());
         completeSources.forEach(task::noMoreSplits);
 
-        task.addStateChangeListener(this::updateTaskStatus);
+        task.addTaskStateChangeListener(this::updateTaskStatus);
 
         task.start();
 

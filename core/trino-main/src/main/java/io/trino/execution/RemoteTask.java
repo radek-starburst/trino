@@ -43,7 +43,16 @@ public interface RemoteTask
      * be taken to avoid leaking {@code this} when adding a listener in a constructor. Additionally, it is
      * possible notifications are observed out of order due to the asynchronous execution.
      */
-    void addStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener);
+    void addTaskStatusChangeListener(StateChangeListener<TaskStatus> stateChangeListener);
+
+    /**
+     * Listener is always notified asynchronously using a dedicated notification thread pool so, care should
+     * be taken to avoid leaking {@code this} when adding a listener in a constructor. Additionally, it is
+     * possible notifications are observed out of order due to the asynchronous execution.
+     * These listeners are expected to track changes in the TaskStatus.state, especially if the change is not from terminal
+     * state to another terminal state.
+     */
+    void addTaskStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener);
 
     /**
      * Add a listener for the final task info.  This notification is guaranteed to be fired only once.

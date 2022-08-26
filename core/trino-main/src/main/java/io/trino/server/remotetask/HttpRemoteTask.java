@@ -296,7 +296,7 @@ public final class HttpRemoteTask
                     stats,
                     estimatedMemory);
 
-            taskStatusFetcher.addStateChangeListener(newStatus -> {
+            taskStatusFetcher.addTaskStatusChangeListener(newStatus -> {
                 TaskState state = newStatus.getState();
                 if (state.isDone()) {
                     cleanUpTask();
@@ -491,10 +491,18 @@ public final class HttpRemoteTask
     }
 
     @Override
-    public void addStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener)
+    public void addTaskStatusChangeListener(StateChangeListener<TaskStatus> stateChangeListener)
     {
         try (SetThreadName ignored = new SetThreadName("HttpRemoteTask-%s", taskId)) {
-            taskStatusFetcher.addStateChangeListener(stateChangeListener);
+            taskStatusFetcher.addTaskStatusChangeListener(stateChangeListener);
+        }
+    }
+
+    @Override
+    public void addTaskStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener)
+    {
+        try (SetThreadName ignored = new SetThreadName("HttpRemoteTask-%s", taskId)) {
+            taskStatusFetcher.addTaskStateChangeListener(stateChangeListener);
         }
     }
 
@@ -565,6 +573,7 @@ public final class HttpRemoteTask
     private void updateTaskInfo(TaskInfo taskInfo)
     {
         taskStatusFetcher.updateTaskStatus(taskInfo.getTaskStatus());
+        taskStatusFetcher.updateTaskState(taskInfo.getTaskStatus());
         taskInfoFetcher.updateTaskInfo(taskInfo);
     }
 
@@ -719,6 +728,7 @@ public final class HttpRemoteTask
         TaskStatus status = failWith(getTaskStatus(), ABORTED, ImmutableList.of());
         try (SetThreadName ignored = new SetThreadName("HttpRemoteTask-%s", taskId)) {
             taskStatusFetcher.updateTaskStatus(status);
+            taskStatusFetcher.updateTaskState(status);
             // send abort to task
             scheduleAsyncCleanupRequest(new Backoff(maxErrorDuration), "abort", true);
         }
@@ -828,6 +838,7 @@ public final class HttpRemoteTask
 
         TaskStatus status = failWith(getTaskStatus(), FAILED, ImmutableList.of(toFailure(cause)));
         taskStatusFetcher.updateTaskStatus(status);
+        taskStatusFetcher.updateTaskState(status);
 
         try (SetThreadName ignored = new SetThreadName("HttpRemoteTask-%s", taskId)) {
             if (cause instanceof TrinoTransportException) {
