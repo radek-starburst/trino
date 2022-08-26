@@ -409,7 +409,7 @@ public class FaultTolerantStageScheduler
             taskFinishedFuture = SettableFuture.create();
         }
 
-        task.addStateChangeListener(taskStatus -> updateTaskStatus(taskStatus, exchangeSinkInstanceHandle));
+        task.addTaskStatusChangeListener(taskStatus -> updateTaskStatus(taskStatus, exchangeSinkInstanceHandle));
         task.addFinalTaskInfoListener(taskExecutionStats::update);
         task.start();
     }

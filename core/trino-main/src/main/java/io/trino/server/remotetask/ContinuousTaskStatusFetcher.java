@@ -56,6 +56,7 @@ class ContinuousTaskStatusFetcher
     private final TaskId taskId;
     private final Consumer<Throwable> onFail;
     private final StateMachine<TaskStatus> taskStatus;
+    private final StateMachine<TaskStatus> taskState;
     private final JsonCodec<TaskStatus> taskStatusCodec;
     private final DynamicFiltersFetcher dynamicFiltersFetcher;
 
@@ -88,6 +89,7 @@ class ContinuousTaskStatusFetcher
         this.taskId = initialTaskStatus.getTaskId();
         this.onFail = requireNonNull(onFail, "onFail is null");
         this.taskStatus = new StateMachine<>("task-" + taskId, executor, initialTaskStatus);
+        this.taskState = new StateMachine<>("task-" + taskId, executor, initialTaskStatus);
 
         this.refreshMaxWait = requireNonNull(refreshMaxWait, "refreshMaxWait is null");
         this.taskStatusCodec = requireNonNull(taskStatusCodec, "taskStatusCodec is null");
@@ -170,6 +172,7 @@ class ContinuousTaskStatusFetcher
                 updateStats(requestStartNanos);
                 try {
                     updateTaskStatus(value);
+                    updateTaskState(value);
                     errorTracker.requestSucceeded();
                 }
                 finally {
@@ -245,14 +248,45 @@ class ContinuousTaskStatusFetcher
         dynamicFiltersFetcher.updateDynamicFiltersVersionAndFetchIfNecessary(newValue.getDynamicFiltersVersion());
     }
 
+    void updateTaskState(TaskStatus newValue)
+    {
+        taskState.setIf(newValue, oldValue -> {
+            if (oldValue.getState().isDone()) {
+                // never update if the task has reached a terminal state
+                return false;
+            }
+
+            if (newValue.getVersion() < oldValue.getVersion()) {
+                // don't update to an older version (same version is ok)
+                return false;
+            }
+
+            if (oldValue.getState() == newValue.getState()) {
+                // don't update when task state was not changed
+                return false;
+            }
+            return true;
+        });
+    }
+
     /**
      * Listener is always notified asynchronously using a dedicated notification thread pool so, care should
      * be taken to avoid leaking {@code this} when adding a listener in a constructor. Additionally, it is
      * possible notifications are observed out of order due to the asynchronous execution.
      */
-    public void addStateChangeListener(StateMachine.StateChangeListener<TaskStatus> stateChangeListener)
+    public void addTaskStatusChangeListener(StateMachine.StateChangeListener<TaskStatus> stateChangeListener)
     {
         taskStatus.addStateChangeListener(stateChangeListener);
+    }
+
+    /**
+     * Listener is always notified asynchronously using a dedicated notification thread pool so, care should
+     * be taken to avoid leaking {@code this} when adding a listener in a constructor. Additionally, it is
+     * possible notifications are observed out of order due to the asynchronous execution.
+     */
+    public void addTaskStateChangeListener(StateMachine.StateChangeListener<TaskStatus> stateChangeListener)
+    {
+        taskState.addStateChangeListener(stateChangeListener);
     }
 
     private void updateStats(long currentRequestStartNanos)

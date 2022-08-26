@@ -251,8 +251,8 @@ public final class SqlStage
         allTasks.add(taskId);
         nodeTaskMap.addTask(node, task);
 
-        task.addStateChangeListener(this::updateTaskStatus);
-        task.addStateChangeListener(new MemoryUsageListener());
+        task.addTaskStateChangeListener(this::updateTaskStatus);
+        task.addTaskStatusChangeListener(new MemoryUsageListener());
         task.addFinalTaskInfoListener(this::updateFinalTaskInfo);
 
         return Optional.of(task);
