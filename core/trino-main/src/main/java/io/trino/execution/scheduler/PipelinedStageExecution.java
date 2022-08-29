@@ -47,14 +47,11 @@ import org.joda.time.DateTime;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.net.URI;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -125,10 +122,12 @@ public class PipelinedStageExecution
     // source task tracking
     @GuardedBy("this")
     private final Multimap<PlanFragmentId, RemoteTask> sourceTasks = HashMultimap.create();
-    @GuardedBy("this")
+    @GuardedBy("tasksLock")
     private final Set<PlanFragmentId> completeSourceFragments = new HashSet<>();
-    @GuardedBy("this")
+    @GuardedBy("tasksLock")
     private final Set<PlanNodeId> completeSources = new HashSet<>();
+
+    private final ReentrantLock tasksLock = new ReentrantLock();
 
     public static PipelinedStageExecution createPipelinedStageExecution(
             SqlStage stage,
@@ -246,38 +245,63 @@ public class PipelinedStageExecution
     @Override
     public synchronized void schedulingComplete(PlanNodeId partitionedSource)
     {
-        for (RemoteTask task : getAllTasks()) {
-            task.noMoreSplits(partitionedSource);
+        try {
+            tasksLock.lock();
+            for (RemoteTask task : getAllTasks()) {
+                task.noMoreSplits(partitionedSource);
+            }
+            completeSources.add(partitionedSource);
+        } finally {
+            tasksLock.unlock();
         }
-        completeSources.add(partitionedSource);
     }
 
     @Override
     public synchronized void cancel()
     {
-        stateMachine.transitionToCanceled();
-        getAllTasks().forEach(RemoteTask::cancel);
+        try {
+            tasksLock.lock();
+            stateMachine.transitionToCanceled();
+            getAllTasks().forEach(RemoteTask::cancel);
+        } finally {
+            tasksLock.unlock();
+        }
     }
 
     @Override
     public synchronized void abort()
     {
-        stateMachine.transitionToAborted();
-        getAllTasks().forEach(RemoteTask::abort);
+        try {
+            tasksLock.lock();
+            stateMachine.transitionToAborted();
+            getAllTasks().forEach(RemoteTask::abort);
+        } finally {
+            tasksLock.unlock();
+        }
     }
 
     public synchronized void fail(Throwable failureCause)
     {
-        stateMachine.transitionToFailed(failureCause);
-        tasks.values().forEach(RemoteTask::abort);
+        try {
+            tasksLock.lock();
+            stateMachine.transitionToFailed(failureCause);
+            tasks.values().forEach(RemoteTask::abort);
+        } finally {
+            tasksLock.unlock();
+        }
     }
 
     @Override
     public synchronized void failTask(TaskId taskId, Throwable failureCause)
     {
-        RemoteTask task = requireNonNull(tasks.get(taskId.getPartitionId()), () -> "task not found: " + taskId);
-        task.fail(failureCause);
-        fail(failureCause);
+        try {
+            tasksLock.lock();
+            RemoteTask task = requireNonNull(tasks.get(taskId.getPartitionId()), () -> "task not found: " + taskId);
+            task.fail(failureCause);
+            fail(failureCause);
+        } finally {
+            tasksLock.unlock();
+        }
     }
 
     @Override
@@ -286,57 +310,63 @@ public class PipelinedStageExecution
             int partition,
             Multimap<PlanNodeId, Split> initialSplits)
     {
-        if (stateMachine.getState().isDone()) {
-            return Optional.empty();
-        }
+        try {
+            tasksLock.lock();
 
-        checkArgument(!tasks.containsKey(partition), "A task for partition %s already exists", partition);
-
-        OutputBuffers outputBuffers = outputBufferManagers.get(stage.getFragment().getId()).getOutputBuffers();
-
-        Optional<RemoteTask> optionalTask = stage.createTask(
-                node,
-                partition,
-                attempt,
-                bucketToPartition,
-                outputBuffers,
-                initialSplits,
-                ImmutableSet.of(),
-                Optional.empty());
-
-        if (optionalTask.isEmpty()) {
-            return Optional.empty();
-        }
-
-        RemoteTask task = optionalTask.get();
-
-        tasks.put(partition, task);
-
-        ImmutableMultimap.Builder<PlanNodeId, Split> exchangeSplits = ImmutableMultimap.builder();
-        sourceTasks.forEach((fragmentId, sourceTask) -> {
-            TaskStatus status = sourceTask.getTaskStatus();
-            if (status.getState() != TaskState.FINISHED) {
-                PlanNodeId planNodeId = exchangeSources.get(fragmentId).getId();
-                exchangeSplits.put(planNodeId, createExchangeSplit(sourceTask, task));
+            if (stateMachine.getState().isDone()) {
+                return Optional.empty();
             }
-        });
 
-        allTasks.add(task.getTaskId());
+            checkArgument(!tasks.containsKey(partition), "A task for partition %s already exists", partition);
 
-        task.addSplits(exchangeSplits.build());
-        completeSources.forEach(task::noMoreSplits);
+            OutputBuffers outputBuffers = outputBufferManagers.get(stage.getFragment().getId()).getOutputBuffers();
 
-        task.addTaskStateChangeListener(this::updateTaskStatus);
+            Optional<RemoteTask> optionalTask = stage.createTask(
+                    node,
+                    partition,
+                    attempt,
+                    bucketToPartition,
+                    outputBuffers,
+                    initialSplits,
+                    ImmutableSet.of(),
+                    Optional.empty());
 
-        task.start();
+            if (optionalTask.isEmpty()) {
+                return Optional.empty();
+            }
 
-        taskLifecycleListener.taskCreated(stage.getFragment().getId(), task);
+            RemoteTask task = optionalTask.get();
 
-        // update output buffers
-        OutputBufferId outputBufferId = new OutputBufferId(task.getTaskId().getPartitionId());
-        updateSourceTasksOutputBuffers(outputBufferManager -> outputBufferManager.addOutputBuffer(outputBufferId));
+            tasks.put(partition, task);
 
-        return Optional.of(task);
+            ImmutableMultimap.Builder<PlanNodeId, Split> exchangeSplits = ImmutableMultimap.builder();
+            sourceTasks.forEach((fragmentId, sourceTask) -> {
+                TaskStatus status = sourceTask.getTaskStatus();
+                if (status.getState() != TaskState.FINISHED) {
+                    PlanNodeId planNodeId = exchangeSources.get(fragmentId).getId();
+                    exchangeSplits.put(planNodeId, createExchangeSplit(sourceTask, task));
+                }
+            });
+
+            allTasks.add(task.getTaskId());
+
+            task.addSplits(exchangeSplits.build());
+            completeSources.forEach(task::noMoreSplits);
+
+            task.addTaskStateChangeListener(this::updateTaskStatus);
+
+            task.start();
+
+            taskLifecycleListener.taskCreated(stage.getFragment().getId(), task);
+
+            // update output buffers
+            OutputBufferId outputBufferId = new OutputBufferId(task.getTaskId().getPartitionId());
+            updateSourceTasksOutputBuffers(outputBufferManager -> outputBufferManager.addOutputBuffer(outputBufferId));
+
+            return Optional.of(task);
+        } finally {
+            tasksLock.unlock();
+        }
     }
 
     private synchronized void updateTaskStatus(TaskStatus taskStatus)
@@ -426,34 +456,45 @@ public class PipelinedStageExecution
 
     private synchronized void sourceTaskCreated(PlanFragmentId fragmentId, RemoteTask sourceTask)
     {
-        requireNonNull(fragmentId, "fragmentId is null");
+        try {
+            tasksLock.lock();
 
-        RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
-        checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
+            requireNonNull(fragmentId, "fragmentId is null");
 
-        sourceTasks.put(fragmentId, sourceTask);
+            RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
+            checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
 
-        OutputBufferManager outputBufferManager = outputBufferManagers.get(fragmentId);
-        sourceTask.setOutputBuffers(outputBufferManager.getOutputBuffers());
+            sourceTasks.put(fragmentId, sourceTask);
 
-        for (RemoteTask destinationTask : getAllTasks()) {
-            destinationTask.addSplits(ImmutableMultimap.of(remoteSource.getId(), createExchangeSplit(sourceTask, destinationTask)));
+            OutputBufferManager outputBufferManager = outputBufferManagers.get(fragmentId);
+            sourceTask.setOutputBuffers(outputBufferManager.getOutputBuffers());
+
+            for (RemoteTask destinationTask : getAllTasks()) {
+                destinationTask.addSplits(ImmutableMultimap.of(remoteSource.getId(), createExchangeSplit(sourceTask, destinationTask)));
+            }
+        } finally {
+            tasksLock.unlock();
         }
     }
 
-    private synchronized void noMoreSourceTasks(PlanFragmentId fragmentId)
+    private void noMoreSourceTasks(PlanFragmentId fragmentId)
     {
-        RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
-        checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
+        try {
+            tasksLock.lock();
+            RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
+            checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
 
-        completeSourceFragments.add(fragmentId);
+            completeSourceFragments.add(fragmentId);
 
-        // is the source now complete?
-        if (completeSourceFragments.containsAll(remoteSource.getSourceFragmentIds())) {
-            completeSources.add(remoteSource.getId());
-            for (RemoteTask task : getAllTasks()) {
-                task.noMoreSplits(remoteSource.getId());
+            // is the source now complete?
+            if (completeSourceFragments.containsAll(remoteSource.getSourceFragmentIds())) {
+                completeSources.add(remoteSource.getId());
+                for (RemoteTask task : getAllTasks()) {
+                    task.noMoreSplits(remoteSource.getId());
+                }
             }
+        } finally {
+            tasksLock.unlock();
         }
     }
 
