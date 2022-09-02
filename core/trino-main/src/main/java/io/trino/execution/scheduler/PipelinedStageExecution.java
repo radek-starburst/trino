@@ -50,7 +50,9 @@ import java.net.URI;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -59,16 +61,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
-import static io.trino.execution.scheduler.StageExecution.State.ABORTED;
-import static io.trino.execution.scheduler.StageExecution.State.CANCELED;
-import static io.trino.execution.scheduler.StageExecution.State.FAILED;
-import static io.trino.execution.scheduler.StageExecution.State.FINISHED;
-import static io.trino.execution.scheduler.StageExecution.State.FLUSHING;
-import static io.trino.execution.scheduler.StageExecution.State.PLANNED;
-import static io.trino.execution.scheduler.StageExecution.State.RUNNING;
-import static io.trino.execution.scheduler.StageExecution.State.SCHEDULED;
-import static io.trino.execution.scheduler.StageExecution.State.SCHEDULING;
-import static io.trino.execution.scheduler.StageExecution.State.SCHEDULING_SPLITS;
+import static io.trino.execution.scheduler.StageExecution.State.*;
 import static io.trino.failuredetector.FailureDetector.State.GONE;
 import static io.trino.operator.ExchangeOperator.REMOTE_CATALOG_HANDLE;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
@@ -111,23 +104,18 @@ public class PipelinedStageExecution
 
     private final Map<Integer, RemoteTask> tasks = new ConcurrentHashMap<>();
 
+    private final Set<TaskId> finishedTasks = ConcurrentHashMap.newKeySet();
+    private final Set<TaskId> runningTasks = ConcurrentHashMap.newKeySet();
+    private final AtomicLong flushingTasksCounter = new AtomicLong();
+
     // current stage task tracking
     @GuardedBy("this")
-    private final Set<TaskId> allTasks = new HashSet<>();
-    @GuardedBy("this")
-    private final Set<TaskId> finishedTasks = new HashSet<>();
-    @GuardedBy("this")
-    private final Set<TaskId> flushingTasks = new HashSet<>();
-
+    private final Set<TaskId> allTasks = ConcurrentHashMap.newKeySet();
     // source task tracking
     @GuardedBy("this")
     private final Multimap<PlanFragmentId, RemoteTask> sourceTasks = HashMultimap.create();
-    @GuardedBy("tasksLock")
     private final Set<PlanFragmentId> completeSourceFragments = new HashSet<>();
-    @GuardedBy("tasksLock")
     private final Set<PlanNodeId> completeSources = new HashSet<>();
-
-    private final ReentrantLock tasksLock = new ReentrantLock();
 
     public static PipelinedStageExecution createPipelinedStageExecution(
             SqlStage stage,
@@ -226,7 +214,7 @@ public class PipelinedStageExecution
         if (isFlushing()) {
             stateMachine.transitionToFlushing();
         }
-        if (finishedTasks.containsAll(allTasks)) {
+        if (isFinishing()) {
             stateMachine.transitionToFinished();
         }
 
@@ -235,73 +223,53 @@ public class PipelinedStageExecution
         }
     }
 
-    private synchronized boolean isFlushing()
+    private boolean isFlushing()
     {
-        // to transition to flushing, there must be at least one flushing task, and all others must be flushing or finished.
-        return !flushingTasks.isEmpty()
-                && allTasks.stream().allMatch(taskId -> finishedTasks.contains(taskId) || flushingTasks.contains(taskId));
+        return runningTasks.size() == 0;
+    }
+
+    private boolean isFinishing() {
+        if (finishedTasks.size() == allTasks.size()) {
+            return true;
+        }
+        return false;
     }
 
     @Override
     public synchronized void schedulingComplete(PlanNodeId partitionedSource)
     {
-        try {
-            tasksLock.lock();
-            for (RemoteTask task : getAllTasks()) {
-                task.noMoreSplits(partitionedSource);
-            }
-            completeSources.add(partitionedSource);
-        } finally {
-            tasksLock.unlock();
+        for (RemoteTask task : getAllTasks()) {
+            task.noMoreSplits(partitionedSource);
         }
+        completeSources.add(partitionedSource);
     }
 
     @Override
     public synchronized void cancel()
     {
-        try {
-            tasksLock.lock();
-            stateMachine.transitionToCanceled();
-            getAllTasks().forEach(RemoteTask::cancel);
-        } finally {
-            tasksLock.unlock();
-        }
+        stateMachine.transitionToCanceled();
+        getAllTasks().forEach(RemoteTask::cancel);
     }
 
     @Override
     public synchronized void abort()
     {
-        try {
-            tasksLock.lock();
-            stateMachine.transitionToAborted();
-            getAllTasks().forEach(RemoteTask::abort);
-        } finally {
-            tasksLock.unlock();
-        }
+        stateMachine.transitionToAborted();
+        getAllTasks().forEach(RemoteTask::abort);
     }
 
     public synchronized void fail(Throwable failureCause)
     {
-        try {
-            tasksLock.lock();
-            stateMachine.transitionToFailed(failureCause);
-            tasks.values().forEach(RemoteTask::abort);
-        } finally {
-            tasksLock.unlock();
-        }
+        stateMachine.transitionToFailed(failureCause);
+        tasks.values().forEach(RemoteTask::abort);
     }
 
     @Override
     public synchronized void failTask(TaskId taskId, Throwable failureCause)
     {
-        try {
-            tasksLock.lock();
-            RemoteTask task = requireNonNull(tasks.get(taskId.getPartitionId()), () -> "task not found: " + taskId);
-            task.fail(failureCause);
-            fail(failureCause);
-        } finally {
-            tasksLock.unlock();
-        }
+        RemoteTask task = requireNonNull(tasks.get(taskId.getPartitionId()), () -> "task not found: " + taskId);
+        task.fail(failureCause);
+        fail(failureCause);
     }
 
     @Override
@@ -310,75 +278,64 @@ public class PipelinedStageExecution
             int partition,
             Multimap<PlanNodeId, Split> initialSplits)
     {
-        try {
-            tasksLock.lock();
-
-            if (stateMachine.getState().isDone()) {
-                return Optional.empty();
-            }
-
-            checkArgument(!tasks.containsKey(partition), "A task for partition %s already exists", partition);
-
-            OutputBuffers outputBuffers = outputBufferManagers.get(stage.getFragment().getId()).getOutputBuffers();
-
-            Optional<RemoteTask> optionalTask = stage.createTask(
-                    node,
-                    partition,
-                    attempt,
-                    bucketToPartition,
-                    outputBuffers,
-                    initialSplits,
-                    ImmutableSet.of(),
-                    Optional.empty());
-
-            if (optionalTask.isEmpty()) {
-                return Optional.empty();
-            }
-
-            RemoteTask task = optionalTask.get();
-
-            tasks.put(partition, task);
-
-            ImmutableMultimap.Builder<PlanNodeId, Split> exchangeSplits = ImmutableMultimap.builder();
-            sourceTasks.forEach((fragmentId, sourceTask) -> {
-                TaskStatus status = sourceTask.getTaskStatus();
-                if (status.getState() != TaskState.FINISHED) {
-                    PlanNodeId planNodeId = exchangeSources.get(fragmentId).getId();
-                    exchangeSplits.put(planNodeId, createExchangeSplit(sourceTask, task));
-                }
-            });
-
-            allTasks.add(task.getTaskId());
-
-            task.addSplits(exchangeSplits.build());
-            completeSources.forEach(task::noMoreSplits);
-
-            task.addTaskStateChangeListener(this::updateTaskStatus);
-
-            task.start();
-
-            taskLifecycleListener.taskCreated(stage.getFragment().getId(), task);
-
-            // update output buffers
-            OutputBufferId outputBufferId = new OutputBufferId(task.getTaskId().getPartitionId());
-            updateSourceTasksOutputBuffers(outputBufferManager -> outputBufferManager.addOutputBuffer(outputBufferId));
-
-            return Optional.of(task);
-        } finally {
-            tasksLock.unlock();
+        if (stateMachine.getState().isDone()) {
+            return Optional.empty();
         }
+
+        checkArgument(!tasks.containsKey(partition), "A task for partition %s already exists", partition);
+
+        OutputBuffers outputBuffers = outputBufferManagers.get(stage.getFragment().getId()).getOutputBuffers();
+
+        Optional<RemoteTask> optionalTask = stage.createTask(
+                node,
+                partition,
+                attempt,
+                bucketToPartition,
+                outputBuffers,
+                initialSplits,
+                ImmutableSet.of(),
+                Optional.empty());
+
+        if (optionalTask.isEmpty()) {
+            return Optional.empty();
+        }
+
+        RemoteTask task = optionalTask.get();
+        checkArgument(task.getTaskStatus().getState() != TaskState.FINISHED && task.getTaskStatus().getState() != TaskState.FLUSHING);
+
+        tasks.put(partition, task);
+
+        ImmutableMultimap.Builder<PlanNodeId, Split> exchangeSplits = ImmutableMultimap.builder();
+        sourceTasks.forEach((fragmentId, sourceTask) -> {
+            TaskStatus status = sourceTask.getTaskStatus();
+            if (status.getState() != TaskState.FINISHED) {
+                PlanNodeId planNodeId = exchangeSources.get(fragmentId).getId();
+                exchangeSplits.put(planNodeId, createExchangeSplit(sourceTask, task));
+            }
+        });
+
+        allTasks.add(task.getTaskId());
+        runningTasks.add(task.getTaskId());
+
+        task.addSplits(exchangeSplits.build());
+        completeSources.forEach(task::noMoreSplits);
+
+        task.addTaskStateChangeListener(this::updateTaskStatus);
+
+        task.start();
+
+        taskLifecycleListener.taskCreated(stage.getFragment().getId(), task);
+
+        // update output buffers
+        OutputBufferId outputBufferId = new OutputBufferId(task.getTaskId().getPartitionId());
+        updateSourceTasksOutputBuffers(outputBufferManager -> outputBufferManager.addOutputBuffer(outputBufferId));
+
+        return Optional.of(task);
     }
 
-    private synchronized void updateTaskStatus(TaskStatus taskStatus)
-    {
+    private synchronized void handleFailedTaskStatus(TaskStatus taskStatus) {
         State stageState = stateMachine.getState();
-        if (stageState.isDone()) {
-            return;
-        }
-
-        TaskState taskState = taskStatus.getState();
-
-        switch (taskState) {
+        switch (taskStatus.getState()) {
             case FAILED:
                 RuntimeException failure = taskStatus.getFailures().stream()
                         .findFirst()
@@ -394,25 +351,43 @@ public class PipelinedStageExecution
             case ABORTED:
                 // A task should only be in the aborted state if the STAGE is done (ABORTED or FAILED)
                 fail(new TrinoException(GENERIC_INTERNAL_ERROR, "A task is in the ABORTED state but stage is " + stageState));
-                break;
-            case FLUSHING:
-                flushingTasks.add(taskStatus.getTaskId());
-                break;
-            case FINISHED:
-                finishedTasks.add(taskStatus.getTaskId());
-                flushingTasks.remove(taskStatus.getTaskId());
-                break;
-            default:
+        }
+    }
+
+    private void updateTaskStatus(TaskStatus taskStatus)
+    {
+        State stageState = stateMachine.getState();
+        TaskState taskState = taskStatus.getState();
+        if (stageState.isDone()) {
+            return;
         }
 
+        if (taskState == TaskState.FAILED || taskState == TaskState.CANCELED || taskState == TaskState.ABORTED) {
+            handleFailedTaskStatus(taskStatus);
+            return;
+        }
+
+        if (taskState == TaskState.FLUSHING) {
+            flushingTasksCounter.incrementAndGet();
+            runningTasks.remove(taskStatus.getTaskId());
+        } else if (taskState == TaskState.FINISHED) {
+            finishedTasks.add(taskStatus.getTaskId());
+            runningTasks.remove(taskStatus.getTaskId());
+        } else {
+            runningTasks.add(taskStatus.getTaskId());
+        }
+
+        // TODO: Co ze scheduleTask?
         if (stageState == SCHEDULED || stageState == RUNNING || stageState == FLUSHING) {
+            // a new task could be added concurrently but when the stage is in at least SCHEDULED STATE it is not possible
+            // or at least we ignore a such case even though this method was synchronized
             if (taskState == TaskState.RUNNING) {
                 stateMachine.transitionToRunning();
             }
             if (isFlushing()) {
                 stateMachine.transitionToFlushing();
             }
-            if (finishedTasks.containsAll(allTasks)) {
+            if (isFinishing()) {
                 stateMachine.transitionToFinished();
             }
         }
@@ -456,45 +431,34 @@ public class PipelinedStageExecution
 
     private synchronized void sourceTaskCreated(PlanFragmentId fragmentId, RemoteTask sourceTask)
     {
-        try {
-            tasksLock.lock();
+        requireNonNull(fragmentId, "fragmentId is null");
 
-            requireNonNull(fragmentId, "fragmentId is null");
+        RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
+        checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
 
-            RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
-            checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
+        sourceTasks.put(fragmentId, sourceTask);
 
-            sourceTasks.put(fragmentId, sourceTask);
+        OutputBufferManager outputBufferManager = outputBufferManagers.get(fragmentId);
+        sourceTask.setOutputBuffers(outputBufferManager.getOutputBuffers());
 
-            OutputBufferManager outputBufferManager = outputBufferManagers.get(fragmentId);
-            sourceTask.setOutputBuffers(outputBufferManager.getOutputBuffers());
-
-            for (RemoteTask destinationTask : getAllTasks()) {
-                destinationTask.addSplits(ImmutableMultimap.of(remoteSource.getId(), createExchangeSplit(sourceTask, destinationTask)));
-            }
-        } finally {
-            tasksLock.unlock();
+        for (RemoteTask destinationTask : getAllTasks()) {
+            destinationTask.addSplits(ImmutableMultimap.of(remoteSource.getId(), createExchangeSplit(sourceTask, destinationTask)));
         }
     }
 
-    private void noMoreSourceTasks(PlanFragmentId fragmentId)
+    private synchronized void noMoreSourceTasks(PlanFragmentId fragmentId)
     {
-        try {
-            tasksLock.lock();
-            RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
-            checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
+        RemoteSourceNode remoteSource = exchangeSources.get(fragmentId);
+        checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
 
-            completeSourceFragments.add(fragmentId);
+        completeSourceFragments.add(fragmentId);
 
-            // is the source now complete?
-            if (completeSourceFragments.containsAll(remoteSource.getSourceFragmentIds())) {
-                completeSources.add(remoteSource.getId());
-                for (RemoteTask task : getAllTasks()) {
-                    task.noMoreSplits(remoteSource.getId());
-                }
+        // is the source now complete?
+        if (completeSourceFragments.containsAll(remoteSource.getSourceFragmentIds())) {
+            completeSources.add(remoteSource.getId());
+            for (RemoteTask task : getAllTasks()) {
+                task.noMoreSplits(remoteSource.getId());
             }
-        } finally {
-            tasksLock.unlock();
         }
     }
 
