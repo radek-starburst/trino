@@ -124,8 +124,7 @@ class Query
     private boolean resultsConsumed;
 
     @GuardedBy("this")
-    private List<Column> columns;
-
+    private volatile List<Column> columns;
     @GuardedBy("this")
     private List<Type> types;
 
@@ -566,25 +565,29 @@ class Query
         }
     }
 
-    private synchronized void setQueryOutputInfo(QueryExecution.QueryOutputInfo outputInfo)
+    private void setQueryOutputInfo(QueryExecution.QueryOutputInfo outputInfo)
     {
+        ImmutableList.Builder<Column> list = ImmutableList.builder();
         // if first callback, set column names
         if (columns == null) {
             List<String> columnNames = outputInfo.getColumnNames();
             List<Type> columnTypes = outputInfo.getColumnTypes();
             checkArgument(columnNames.size() == columnTypes.size(), "Column names and types size mismatch");
 
-            ImmutableList.Builder<Column> list = ImmutableList.builder();
             for (int i = 0; i < columnNames.size(); i++) {
                 list.add(createColumn(columnNames.get(i), columnTypes.get(i), supportsParametricDateTime));
             }
-            columns = list.build();
-            types = outputInfo.getColumnTypes();
         }
 
-        outputInfo.getInputs().forEach(exchangeDataSource::addInput);
-        if (outputInfo.isNoMoreInputs()) {
-            exchangeDataSource.noMoreInputs();
+        synchronized (this) {
+            if (columns == null) {
+                columns = list.build();
+                types = outputInfo.getColumnTypes();
+            }
+            outputInfo.getInputs().forEach(exchangeDataSource::addInput);
+            if (outputInfo.isNoMoreInputs()) {
+                exchangeDataSource.noMoreInputs();
+            }
         }
     }
 
