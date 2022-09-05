@@ -75,10 +75,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -141,7 +138,7 @@ public final class HttpRemoteTask
     @GuardedBy("this")
     // The keys of this map represent all plan nodes that have "no more splits".
     // The boolean value of each entry represents whether the "no more splits" notification is pending delivery to workers.
-    private final Map<PlanNodeId, Boolean> noMoreSplits = new HashMap<>();
+    private final Map<PlanNodeId, Boolean> noMoreSplits = new ConcurrentHashMap<>();
     private final AtomicReference<OutputBuffers> outputBuffers = new AtomicReference<>();
     private final FutureStateChange<Void> whenSplitQueueHasSpace = new FutureStateChange<>();
     @GuardedBy("this")
@@ -399,14 +396,18 @@ public final class HttpRemoteTask
     }
 
     @Override
-    public synchronized void noMoreSplits(PlanNodeId sourceId)
+    public void noMoreSplits(PlanNodeId sourceId)
     {
         if (noMoreSplits.containsKey(sourceId)) {
             return;
         }
-
-        noMoreSplits.put(sourceId, true);
-        triggerUpdate();
+        synchronized (this) {
+            if (noMoreSplits.containsKey(sourceId)) {
+                return;
+            }
+            noMoreSplits.put(sourceId, true);
+            triggerUpdate();
+        }
     }
 
     @Override

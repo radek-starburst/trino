@@ -69,7 +69,7 @@ public final class SqlStage
     @GuardedBy("this")
     private final Set<TaskId> allTasks = new HashSet<>();
     @GuardedBy("this")
-    private final Set<TaskId> finishedTasks = new HashSet<>();
+    private final Set<TaskId> finishedTasks = ConcurrentHashMap.newKeySet();
     @GuardedBy("this")
     private final Set<TaskId> tasksWithFinalInfo = new HashSet<>();
 
@@ -263,7 +263,7 @@ public final class SqlStage
         stateMachine.recordGetSplitTime(start);
     }
 
-    private synchronized void updateTaskStatus(TaskStatus status)
+    private void updateTaskStatus(TaskStatus status)
     {
         if (status.getState().isDone()) {
             finishedTasks.add(status.getTaskId());
