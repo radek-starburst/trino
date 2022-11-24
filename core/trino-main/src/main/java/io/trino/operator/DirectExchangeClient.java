@@ -271,7 +271,7 @@ public class DirectExchangeClient
             return;
         }
 
-        int clientCount = (int) ((1.0 * neededBytes / averageBytesPerRequest) * concurrentRequestMultiplier);
+        int clientCount = (int) ((1.0 * neededBytes / averageBytesPerRequest) * 100);
         clientCount = Math.max(clientCount, 1);
 
         int pendingClients = allClients.size() - queuedClients.size() - completedClients.size();
