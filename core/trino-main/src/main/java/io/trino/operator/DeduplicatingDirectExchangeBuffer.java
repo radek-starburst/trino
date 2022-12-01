@@ -27,6 +27,7 @@ import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
+import io.airlift.stats.TDigest;
 import io.airlift.units.DataSize;
 import io.trino.exchange.ExchangeManagerRegistry;
 import io.trino.execution.StageId;
@@ -379,6 +380,13 @@ public class DeduplicatingDirectExchangeBuffer
     {
         // this buffer is always ready to accept more data
         return Long.MAX_VALUE;
+    }
+
+    @Override
+    public synchronized TDigest getBufferUtilization()
+    {
+        // this buffer is always ready to accept more data therefore utilization of that buffer is always near to 0.
+        return new TDigest();
     }
 
     @Override

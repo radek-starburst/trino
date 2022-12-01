@@ -129,7 +129,6 @@ public final class HttpPageBufferClient
     private final ClientCallback clientCallback;
     private final ScheduledExecutorService scheduledExecutor;
     private final Backoff backoff;
-
     @GuardedBy("this")
     private boolean closed;
     @GuardedBy("this")
@@ -154,6 +153,7 @@ public final class HttpPageBufferClient
     private final AtomicInteger requestsScheduled = new AtomicInteger();
     private final AtomicInteger requestsCompleted = new AtomicInteger();
     private final AtomicInteger requestsFailed = new AtomicInteger();
+    private final AtomicLong receivedBytes = new AtomicLong();
 
     private final Executor pageBufferClientCallbackExecutor;
 
@@ -248,6 +248,7 @@ public final class HttpPageBufferClient
                 pagesReceived.get(),
                 rejectedRows == 0 ? OptionalLong.empty() : OptionalLong.of(rejectedRows),
                 rejectedPages == 0 ? OptionalInt.empty() : OptionalInt.of(rejectedPages),
+                receivedBytes.get(),
                 requestsScheduled.get(),
                 requestsCompleted.get(),
                 requestsFailed.get(),
@@ -257,6 +258,15 @@ public final class HttpPageBufferClient
     public TaskId getRemoteTaskId()
     {
         return remoteTaskId;
+    }
+
+    public synchronized long getAverageRequestSizeInBytes()
+    {
+        long successfulRequests = requestsCompleted.get() - requestsFailed.get();
+        if (successfulRequests > 0) {
+            return receivedBytes.get() / successfulRequests;
+        }
+        return 0;
     }
 
     public synchronized boolean isRunning()
@@ -433,7 +443,12 @@ public final class HttpPageBufferClient
                         rowsRejected.addAndGet(rowCount);
                     }
                 }
-                requestsCompleted.incrementAndGet();
+
+                long responseSize = pages.stream().mapToLong(Slice::length).sum();
+                synchronized (HttpPageBufferClient.this) {
+                    requestsCompleted.incrementAndGet();
+                    receivedBytes.addAndGet(responseSize);
+                }
 
                 synchronized (HttpPageBufferClient.this) {
                     // client is complete, acknowledge it by sending it a delete in the next request
@@ -511,8 +526,8 @@ public final class HttpPageBufferClient
                         future = null;
                     }
                     lastUpdate = DateTime.now();
+                    requestsCompleted.incrementAndGet();
                 }
-                requestsCompleted.incrementAndGet();
                 clientCallback.clientFinished(HttpPageBufferClient.this);
             }
 
@@ -546,8 +561,10 @@ public final class HttpPageBufferClient
         // Cannot delegate to other callback while holding a lock on this
         assertNotHoldsLock(this);
 
-        requestsFailed.incrementAndGet();
-        requestsCompleted.incrementAndGet();
+        synchronized (HttpPageBufferClient.this) {
+            requestsFailed.incrementAndGet();
+            requestsCompleted.incrementAndGet();
+        }
 
         if (t instanceof TrinoException) {
             clientCallback.clientFailed(HttpPageBufferClient.this, t);

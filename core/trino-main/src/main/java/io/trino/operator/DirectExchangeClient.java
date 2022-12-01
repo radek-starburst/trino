@@ -18,6 +18,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.http.client.HttpClient;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
+import io.airlift.stats.TDigest;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.FeaturesConfig.DataIntegrityVerification;
@@ -26,6 +27,7 @@ import io.trino.execution.TaskId;
 import io.trino.memory.context.LocalMemoryContext;
 import io.trino.operator.HttpPageBufferClient.ClientCallback;
 import io.trino.operator.WorkProcessor.ProcessState;
+import io.trino.plugin.base.metrics.TDigestHistogram;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -34,8 +36,10 @@ import javax.annotation.concurrent.ThreadSafe;
 import java.io.Closeable;
 import java.net.URI;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -59,7 +63,7 @@ public class DirectExchangeClient
     private final String selfAddress;
     private final DataIntegrityVerification dataIntegrityVerification;
     private final DataSize maxResponseSize;
-    private final int concurrentRequestMultiplier;
+    private final long concurrentRequestMultiplier;
     private final Duration maxErrorDuration;
     private final boolean acknowledgePages;
     private final HttpClient httpClient;
@@ -72,7 +76,6 @@ public class DirectExchangeClient
 
     @GuardedBy("this")
     private final Deque<HttpPageBufferClient> queuedClients = new LinkedList<>();
-
     private final Set<HttpPageBufferClient> completedClients = newConcurrentHashSet();
     private final DirectExchangeBuffer buffer;
 
@@ -90,6 +93,15 @@ public class DirectExchangeClient
     private final Lock memoryContextReadLock = memoryContextLock.readLock();
     private final Lock memoryContextWriteLock = memoryContextLock.writeLock();
     private final Executor pageBufferClientCallbackExecutor;
+    private final TDigest clientCount = new TDigest();
+    private final TDigest pendingClientsDigest = new TDigest();
+
+    @GuardedBy("this")
+    private final TDigest timeInMillisToClientBeRequested = new TDigest();
+
+    @GuardedBy("this")
+    private final Map<HttpPageBufferClient, Long> putToQueuedClientsTimestamp = new HashMap<>();
+
     private final TaskFailureListener taskFailureListener;
 
     // DirectExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
@@ -142,7 +154,11 @@ public class DirectExchangeClient
                     buffer.getSpilledPageCount(),
                     buffer.getSpilledBytes(),
                     noMoreLocations,
-                    pageBufferClientStatus);
+                    pageBufferClientStatus,
+                    new TDigestHistogram(TDigest.copyOf(clientCount)),
+                    new TDigestHistogram(buffer.getBufferUtilization()),
+                    new TDigestHistogram(TDigest.copyOf(pendingClientsDigest)),
+                    new TDigestHistogram(TDigest.copyOf(timeInMillisToClientBeRequested)));
         }
     }
 
@@ -174,6 +190,7 @@ public class DirectExchangeClient
                 pageBufferClientCallbackExecutor);
         allClients.put(location, client);
         queuedClients.add(client);
+        putToQueuedClientsTimestamp.put(client, System.nanoTime());
 
         scheduleRequestIfNecessary();
     }
@@ -271,11 +288,20 @@ public class DirectExchangeClient
             return;
         }
 
-        int clientCount = (int) ((1.0 * neededBytes / averageBytesPerRequest) * concurrentRequestMultiplier);
-        clientCount = Math.max(clientCount, 1);
+        long reservedBytes = allClients.values().stream()
+                .filter(client -> !queuedClients.contains(client) && !completedClients.contains(client))
+                .mapToLong(HttpPageBufferClient::getAverageRequestSizeInBytes)
+                .sum();
+        long bytesToBeRequested = 0;
+        int clientCount = 0;
 
-        int pendingClients = allClients.size() - queuedClients.size() - completedClients.size();
-        clientCount -= pendingClients;
+        for (HttpPageBufferClient client : queuedClients) {
+            if (bytesToBeRequested >= neededBytes * concurrentRequestMultiplier - reservedBytes) {
+                break;
+            }
+            bytesToBeRequested += client.getAverageRequestSizeInBytes();
+            clientCount++;
+        }
 
         for (int i = 0; i < clientCount; i++) {
             HttpPageBufferClient client = queuedClients.poll();
@@ -283,8 +309,12 @@ public class DirectExchangeClient
                 // no more clients available
                 return;
             }
+            timeInMillisToClientBeRequested.add((System.nanoTime() - putToQueuedClientsTimestamp.getOrDefault(client, 0L)) * 1.0 / 1_000_000);
             client.scheduleRequest();
         }
+
+        this.pendingClientsDigest.add(allClients.size() - completedClients.size() - queuedClients.size());
+        this.clientCount.add(clientCount);
     }
 
     public ListenableFuture<Void> isBlocked()
@@ -297,6 +327,7 @@ public class DirectExchangeClient
         checkState(!completedClients.contains(client), "client is already marked as completed");
         // Compute stats before acquiring the lock
         long responseSize = 0;
+
         if (!pages.isEmpty()) {
             for (Slice page : pages) {
                 responseSize += page.length();
@@ -352,6 +383,7 @@ public class DirectExchangeClient
     {
         if (!completedClients.contains(client) && !queuedClients.contains(client)) {
             queuedClients.add(client);
+            putToQueuedClientsTimestamp.put(client, System.nanoTime());
         }
         scheduleRequestIfNecessary();
     }

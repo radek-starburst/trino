@@ -20,6 +20,7 @@ import com.google.common.collect.ListMultimap;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.slice.Slice;
+import io.airlift.stats.TDigest;
 import io.airlift.units.DataSize;
 import io.trino.execution.TaskId;
 
@@ -174,6 +175,12 @@ public class TestingDirectExchangeBuffer
     public synchronized long getMaxRetainedSizeInBytes()
     {
         return 0;
+    }
+
+    @Override
+    public TDigest getBufferUtilization()
+    {
+        return new TDigest();
     }
 
     @Override

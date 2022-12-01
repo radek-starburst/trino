@@ -34,6 +34,7 @@ public class PageBufferClientStatus
     // use optional to keep the output size down, since this renders for every destination
     private final OptionalLong rowsRejected;
     private final OptionalInt pagesRejected;
+    private final long bytesReceived;
     private final int requestsScheduled;
     private final int requestsCompleted;
     private final int requestsFailed;
@@ -47,6 +48,7 @@ public class PageBufferClientStatus
             @JsonProperty("pagesReceived") int pagesReceived,
             @JsonProperty("rowsRejected") OptionalLong rowsRejected,
             @JsonProperty("pagesRejected") OptionalInt pagesRejected,
+            @JsonProperty("bytesReceived") long bytesReceived,
             @JsonProperty("requestsScheduled") int requestsScheduled,
             @JsonProperty("requestsCompleted") int requestsCompleted,
             @JsonProperty("requestsFailed") int requestsFailed,
@@ -59,6 +61,7 @@ public class PageBufferClientStatus
         this.pagesReceived = pagesReceived;
         this.rowsRejected = requireNonNull(rowsRejected, "rowsRejected is null");
         this.pagesRejected = requireNonNull(pagesRejected, "pagesRejected is null");
+        this.bytesReceived = bytesReceived;
         this.requestsScheduled = requestsScheduled;
         this.requestsCompleted = requestsCompleted;
         this.requestsFailed = requestsFailed;
@@ -105,6 +108,12 @@ public class PageBufferClientStatus
     public OptionalInt getPagesRejected()
     {
         return pagesRejected;
+    }
+
+    @JsonProperty
+    public long getBytesReceived()
+    {
+        return bytesReceived;
     }
 
     @JsonProperty

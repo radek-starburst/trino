@@ -16,11 +16,13 @@ package io.trino.operator;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
+import io.trino.plugin.base.metrics.TDigestHistogram;
 import io.trino.spi.Mergeable;
 
 import java.util.List;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
+import static java.lang.Math.max;
 import static java.util.Objects.requireNonNull;
 
 public class DirectExchangeClientStatus
@@ -34,6 +36,10 @@ public class DirectExchangeClientStatus
     private final int spilledPages;
     private final long spilledBytes;
     private final boolean noMoreLocations;
+    private final TDigestHistogram bufferUtilization;
+    private final TDigestHistogram timeToRequestInMillis;
+    private final TDigestHistogram pendingClients;
+    private final TDigestHistogram clientCount;
     private final List<PageBufferClientStatus> pageBufferClientStatuses;
 
     @JsonCreator
@@ -46,7 +52,11 @@ public class DirectExchangeClientStatus
             @JsonProperty("spilledPages") int spilledPages,
             @JsonProperty("spilledBytes") long spilledBytes,
             @JsonProperty("noMoreLocations") boolean noMoreLocations,
-            @JsonProperty("pageBufferClientStatuses") List<PageBufferClientStatus> pageBufferClientStatuses)
+            @JsonProperty("pageBufferClientStatuses") List<PageBufferClientStatus> pageBufferClientStatuses,
+            @JsonProperty("clientCount") TDigestHistogram clientCount,
+            @JsonProperty("bufferUtilization") TDigestHistogram bufferUtilization,
+            @JsonProperty("pendingClients") TDigestHistogram pendingClients,
+            @JsonProperty("timeToRequestInMillis") TDigestHistogram timeToRequestInMillis)
     {
         this.bufferedBytes = bufferedBytes;
         this.maxBufferedBytes = maxBufferedBytes;
@@ -57,6 +67,10 @@ public class DirectExchangeClientStatus
         this.spilledBytes = spilledBytes;
         this.noMoreLocations = noMoreLocations;
         this.pageBufferClientStatuses = ImmutableList.copyOf(requireNonNull(pageBufferClientStatuses, "pageBufferClientStatuses is null"));
+        this.bufferUtilization = bufferUtilization;
+        this.clientCount = clientCount;
+        this.pendingClients = pendingClients;
+        this.timeToRequestInMillis = timeToRequestInMillis;
     }
 
     @JsonProperty
@@ -84,6 +98,18 @@ public class DirectExchangeClientStatus
     }
 
     @JsonProperty
+    public TDigestHistogram getTimeToRequestInMillis()
+    {
+        return timeToRequestInMillis;
+    }
+
+    @JsonProperty
+    public TDigestHistogram getPendingClients()
+    {
+        return pendingClients;
+    }
+
+    @JsonProperty
     public int getBufferedPages()
     {
         return bufferedPages;
@@ -105,6 +131,18 @@ public class DirectExchangeClientStatus
     public boolean isNoMoreLocations()
     {
         return noMoreLocations;
+    }
+
+    @JsonProperty
+    public TDigestHistogram getBufferUtilization()
+    {
+        return bufferUtilization;
+    }
+
+    @JsonProperty
+    public TDigestHistogram getClientCount()
+    {
+        return clientCount;
     }
 
     @JsonProperty
@@ -132,6 +170,9 @@ public class DirectExchangeClientStatus
                 .add("spilledBytes", spilledBytes)
                 .add("noMoreLocations", noMoreLocations)
                 .add("pageBufferClientStatuses", pageBufferClientStatuses)
+                .add("bufferUtilization", bufferUtilization)
+                .add("pendingClients", pendingClients)
+                .add("timeToRequestInMillis", timeToRequestInMillis)
                 .toString();
     }
 
@@ -140,14 +181,19 @@ public class DirectExchangeClientStatus
     {
         return new DirectExchangeClientStatus(
                 (bufferedBytes + other.bufferedBytes) / 2, // this is correct as long as all clients have the same buffer size (capacity)
-                Math.max(maxBufferedBytes, other.maxBufferedBytes),
+                max(maxBufferedBytes, other.maxBufferedBytes),
                 mergeAvgs(averageBytesPerRequest, successfulRequestsCount, other.averageBytesPerRequest, other.successfulRequestsCount),
                 successfulRequestsCount + other.successfulRequestsCount,
                 bufferedPages + other.bufferedPages,
                 spilledPages + other.spilledPages,
                 spilledBytes + other.spilledBytes,
                 noMoreLocations && other.noMoreLocations, // if at least one has some locations, mergee has some too
-                ImmutableList.of()); // pageBufferClientStatuses may be long, so we don't want to combine the lists
+                ImmutableList.of(),
+                clientCount.mergeWith(other.clientCount),
+                bufferUtilization.mergeWith(other.bufferUtilization),
+                pendingClients.mergeWith(other.pendingClients),
+                timeToRequestInMillis.mergeWith(other.timeToRequestInMillis)
+            ); // pageBufferClientStatuses may be long, so we don't want to combine the lists
     }
 
     private static long mergeAvgs(long value1, long count1, long value2, long count2)
