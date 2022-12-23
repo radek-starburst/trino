@@ -50,12 +50,19 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.profile.AsyncProfiler;
 import org.openjdk.jmh.runner.RunnerException;
+import org.openjdk.jmh.runner.options.TimeValue;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Random;
@@ -102,16 +109,16 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         protected static final int ROWS_PER_PAGE = 1024;
 
-        @Param({"varchar", "bigint", "all"})
-        protected String hashColumns = "bigint";
+        @Param({"varchar"})
+        protected String hashColumns = "varchar";
 
-        @Param({"false", "true"})
+        @Param({"false"})
         protected boolean buildHashEnabled;
 
-        @Param({"1", "5"})
+        @Param({"1"})
         protected int buildRowsRepetition = 1;
 
-        @Param({"10", "100", "10000", "100000", "1000000", "8000000"})
+        @Param({"10"})
         protected int buildRowsNumber = 8_000_000;
 
         protected ExecutorService executor;
@@ -199,14 +206,14 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         protected static final int PROBE_ROWS_NUMBER = 1_400_000;
 
-        @Param({"0.1", "1", "2"})
-        protected double matchRate = 1;
+        @Param({"0.1"})
+        protected double matchRate = 0.1;
 
-        @Param({"bigint", "all"})
+        @Param({"bigint"})
         protected String outputColumns = "bigint";
 
-        @Param({"1", "16"})
-        protected int partitionCount = 1;
+        @Param({"16"})
+        protected int partitionCount = 16;
 
         protected List<Page> probePages;
         protected List<Integer> outputChannels;
@@ -483,9 +490,44 @@ public class BenchmarkHashBuildAndJoinOperators
         benchmarkBuildHash(buildContext);
     }
 
+    private static Path prepareOutputPath(String basePath) {
+        try {
+            Files.createDirectories(Path.of(basePath));
+            long directoriesNum = Objects.requireNonNull(new File(basePath).listFiles(File::isDirectory)).length + 1;
+            Path p = Path.of(basePath, Integer.toString((int) directoriesNum));
+            Files.createDirectories(p);
+            return p;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static void main(String[] args)
             throws RunnerException
     {
-        benchmark(BenchmarkHashBuildAndJoinOperators.class).run();
+        Path outputPath = prepareOutputPath("jmh");
+        benchmark(BenchmarkHashBuildAndJoinOperators.class).withOptions(
+                options -> options
+                        .include("benchmarkJoinHash")
+                        .jvmArgs(
+                                "-Djdk.attach.allowAttachSelf=true",
+                                "-Djol.tryWithSudo=true",
+                                "-XX:+UnlockDiagnosticVMOptions",
+                                "-XX:+ShowHiddenFrames",
+                                "-XX:StartFlightRecording=disk=true,dumponexit=true,filename=/tmp/recording.jfr",
+                                "-Xshare:dump",
+                                "-XX:DumpLoadedClassList=/tmp/cds.txt"
+                                )
+                        .param("-Djava.lang.invoke.MethodHandle.DUMP_CLASS_FILES=true")
+                        .forks(0)
+                        .warmupIterations(2)
+                        .measurementIterations(2)
+                        .measurementTime(TimeValue.seconds(10))
+                        .warmupTime(TimeValue.seconds(10))
+                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=text;output=flamegraph", outputPath))
+//                        .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.1;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputPath, outputPath))
+                        //.addProfiler(GCProfiler.class)
+                        .output(Path.of(outputPath.toString(), "stdout.txt").toString())
+        ).run();
     }
 }
