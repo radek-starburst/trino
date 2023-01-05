@@ -30,11 +30,13 @@ import io.airlift.http.client.ResponseHandler;
 import io.airlift.http.client.ResponseTooLargeException;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
+import io.airlift.stats.TDigest;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.FeaturesConfig.DataIntegrityVerification;
 import io.trino.execution.TaskId;
 import io.trino.execution.buffer.PagesSerdeUtil;
+import io.trino.plugin.base.metrics.TDigestHistogram;
 import io.trino.server.remotetask.Backoff;
 import io.trino.spi.TrinoException;
 import io.trino.spi.TrinoTransportException;
@@ -101,6 +103,10 @@ public final class HttpPageBufferClient
 {
     private static final Logger log = Logger.get(HttpPageBufferClient.class);
 
+    public synchronized TDigest getResidualErrorDistribution() {
+        return TDigest.copyOf(residualErrorDistribution);
+    }
+
     /**
      * For each request, the addPage method will be called zero or more times,
      * followed by either requestComplete or clientFinished (if buffer complete).  If the client is
@@ -148,7 +154,9 @@ public final class HttpPageBufferClient
 
     // it is synchronized on `this` for update
     private volatile long averageRequestSizeInBytes;
+    private final TDigest residualErrorDistribution = new TDigest();
 
+    volatile long zero;
     private final AtomicLong rowsReceived = new AtomicLong();
     private final AtomicInteger pagesReceived = new AtomicInteger();
 
@@ -501,6 +509,10 @@ public final class HttpPageBufferClient
     @VisibleForTesting
     synchronized void requestSucceeded(long responseSize)
     {
+        if(responseSize == 0) {
+            zero++;
+        }
+        residualErrorDistribution.add(responseSize - averageRequestSizeInBytes);
         int successfulRequests = requestsSucceeded.incrementAndGet();
         // AVG_n = AVG_(n-1) * (n-1)/n + VALUE_n / n
         averageRequestSizeInBytes = (long) ((1.0 * averageRequestSizeInBytes * (successfulRequests - 1)) + responseSize) / successfulRequests;
