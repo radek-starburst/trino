@@ -20,6 +20,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.http.client.HttpClient;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
+import io.airlift.stats.Distribution;
+import io.airlift.stats.ExponentialDecay;
 import io.airlift.stats.TDigest;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -47,6 +49,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -103,6 +106,10 @@ public class DirectExchangeClient
     private final Executor pageBufferClientCallbackExecutor;
     private final TaskFailureListener taskFailureListener;
     private final Ticker ticker;
+
+    private int requestCompletedFromAdjustment;
+    private final Distribution utilizationDistribution = new Distribution(ExponentialDecay.oneMinute());
+    private int extraClients = 0;
 
     // DirectExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
@@ -257,6 +264,7 @@ public class DirectExchangeClient
         // updating retained memory might be expensive, therefore it needs to be updated outside of exclusive lock
         updateRetainedMemory();
         scheduleRequestIfNecessary();
+        utilizationDistribution.add(buffer.getRetainedSizeInBytes() / (buffer.getRemainingCapacityInBytes() + buffer.getRetainedSizeInBytes()));
 
         // Return the page even if the client is closed.
         // A concurrent thread may have responded to the `isFinished` change
@@ -317,10 +325,15 @@ public class DirectExchangeClient
             projectedBytesToBeRequested += client.getAverageRequestSizeInBytes();
             clientCount++;
         }
+
+        clientCount += addExtraParallelismToUtilizeBuffer();
+
         for (int i = 0; i < clientCount; i++) {
             HttpPageBufferClient client = queuedClients.poll();
-            client.scheduleRequest();
-            clientWaitingTimeInMillis.add(new Duration(ticker.read() - putToQueuedClientsTimestamp.getOrDefault(client, ticker.read()), TimeUnit.NANOSECONDS).toMillis());
+            if (client != null) {
+                client.scheduleRequest();
+                clientWaitingTimeInMillis.add(new Duration(ticker.read() - putToQueuedClientsTimestamp.getOrDefault(client, ticker.read()), TimeUnit.NANOSECONDS).toMillis());
+            }
         }
         return clientCount;
     }
@@ -342,6 +355,19 @@ public class DirectExchangeClient
         return allClients;
     }
 
+    private synchronized int addExtraParallelismToUtilizeBuffer() {
+        if (requestCompletedFromAdjustment > (allClients.size() - completedClients.size()) * 2) {
+            requestCompletedFromAdjustment = 0;
+            if (utilizationDistribution.getAvg() < 60) {
+                extraClients = Math.min(extraClients + 1, (allClients.size() - completedClients.size()) / 4);
+            } else {
+                extraClients = Math.max(extraClients -1, 0);
+            }
+            return extraClients;
+        }
+        return 0;
+    }
+
     private boolean addPages(HttpPageBufferClient client, List<Slice> pages)
     {
         checkState(!completedClients.contains(client), "client is already marked as completed");
@@ -356,6 +382,7 @@ public class DirectExchangeClient
             // updating retained memory might be expensive, therefore it needs to be updated outside of exclusive lock
             updateRetainedMemory();
         }
+        utilizationDistribution.add(buffer.getRetainedSizeInBytes() / (buffer.getRemainingCapacityInBytes() + buffer.getRetainedSizeInBytes()));
 
         synchronized (this) {
             if (closed || buffer.isFinished() || buffer.isFailed()) {
@@ -404,6 +431,7 @@ public class DirectExchangeClient
             queuedClients.add(client);
             putToQueuedClientsTimestamp.put(client, ticker.read());
         }
+        requestCompletedFromAdjustment++;
         scheduleRequestIfNecessary();
     }
 
