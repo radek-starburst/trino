@@ -1033,7 +1033,9 @@ public class JoinCompiler
                 "equal",
                 equalOperator.type(),
                 leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
-        return BytecodeExpressions.equal(equalInvocation, getStatic(Boolean.class, "TRUE"));
+        return BytecodeExpressions.and(
+                BytecodeExpressions.isNotNull(equalInvocation),
+                equalInvocation.invoke("booleanValue", boolean.class));
     }
 
     public static class LookupSourceSupplierFactory
