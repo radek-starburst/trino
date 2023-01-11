@@ -36,7 +36,6 @@ import io.airlift.units.Duration;
 import io.trino.FeaturesConfig.DataIntegrityVerification;
 import io.trino.execution.TaskId;
 import io.trino.execution.buffer.PagesSerdeUtil;
-import io.trino.plugin.base.metrics.TDigestHistogram;
 import io.trino.server.remotetask.Backoff;
 import io.trino.spi.TrinoException;
 import io.trino.spi.TrinoTransportException;
@@ -102,6 +101,7 @@ public final class HttpPageBufferClient
         implements Closeable
 {
     private static final Logger log = Logger.get(HttpPageBufferClient.class);
+    private final Ticker ticker;
 
     public synchronized TDigest getResidualErrorDistribution() {
         return TDigest.copyOf(residualErrorDistribution);
@@ -136,6 +136,7 @@ public final class HttpPageBufferClient
     private final ClientCallback clientCallback;
     private final ScheduledExecutorService scheduledExecutor;
     private final Backoff backoff;
+    volatile long pendingRequestTimestamp;
 
     @GuardedBy("this")
     private boolean closed;
@@ -225,6 +226,7 @@ public final class HttpPageBufferClient
         requireNonNull(maxErrorDuration, "maxErrorDuration is null");
         requireNonNull(ticker, "ticker is null");
         this.backoff = new Backoff(maxErrorDuration, ticker);
+        this.ticker = ticker;
     }
 
     public synchronized PageBufferClientStatus getStatus()
@@ -355,6 +357,7 @@ public final class HttpPageBufferClient
     private synchronized void sendGetResults()
     {
         URI uri = HttpUriBuilder.uriBuilderFrom(location).appendPath(String.valueOf(token)).build();
+        pendingRequestTimestamp = ticker.read();
         HttpResponseFuture<PagesResponse> resultFuture = httpClient.executeAsync(
                 prepareGet()
                         .setHeader(TRINO_MAX_SIZE, maxResponseSize.toString())

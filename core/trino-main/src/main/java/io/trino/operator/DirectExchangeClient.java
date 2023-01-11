@@ -291,6 +291,16 @@ public class DirectExchangeClient
         }
     }
 
+    private long normalizeEstimatedResponseSize(HttpPageBufferClient client) {
+        // ARS(t) := ARS * (t < max_response_time / m ? 1 : max((max_response_time - t) * (m / (m - 1)), 0))
+        final long responseTimeThresholdMilliseconds = 1_000;
+        final long responseTimeCutoffMilliseconds = 3_000;
+
+        long t = (ticker.read() - client.pendingRequestTimestamp) / 1_000_000;
+
+        return client.getAverageRequestSizeInBytes() * (t < responseTimeThresholdMilliseconds ? 1 : (long) Math.max(1.0 - (t * 1.0 / responseTimeCutoffMilliseconds), 0.0));
+    }
+
     @VisibleForTesting
     synchronized int scheduleRequestIfNecessary()
     {
@@ -305,7 +315,7 @@ public class DirectExchangeClient
 
         long reservedBytesForScheduledClients = allClients.values().stream()
                 .filter(client -> !queuedClients.contains(client) && !completedClients.contains(client))
-                .mapToLong(HttpPageBufferClient::getAverageRequestSizeInBytes)
+                .mapToLong(this::normalizeEstimatedResponseSize)
                 .sum();
         long projectedBytesToBeRequested = 0;
         int clientCount = 0;
