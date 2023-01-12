@@ -50,12 +50,18 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.profile.AsyncProfiler;
 import org.openjdk.jmh.runner.RunnerException;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Random;
@@ -87,7 +93,7 @@ import static org.openjdk.jmh.annotations.Mode.AverageTime;
 @Threads(Threads.MAX)
 @OutputTimeUnit(MILLISECONDS)
 @BenchmarkMode(AverageTime)
-@Fork(3)
+@Fork(1)
 @Warmup(iterations = 5)
 @Measurement(iterations = 10, time = 2, timeUnit = SECONDS)
 public class BenchmarkHashBuildAndJoinOperators
@@ -102,16 +108,16 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         protected static final int ROWS_PER_PAGE = 1024;
 
-        @Param({"varchar", "bigint", "all"})
-        protected String hashColumns = "bigint";
+        @Param("varchar")
+        protected String hashColumns = "varchar";
 
-        @Param({"false", "true"})
+        @Param("true")
         protected boolean buildHashEnabled;
 
-        @Param({"1", "5"})
+        @Param({"5"})
         protected int buildRowsRepetition = 1;
 
-        @Param({"10", "100", "10000", "100000", "1000000", "8000000"})
+        @Param({"100000"})
         protected int buildRowsNumber = 8_000_000;
 
         protected ExecutorService executor;
@@ -199,13 +205,13 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         protected static final int PROBE_ROWS_NUMBER = 1_400_000;
 
-        @Param({"0.1", "1", "2"})
+        @Param({"1"})
         protected double matchRate = 1;
 
-        @Param({"bigint", "all"})
+        @Param({"bigint"})
         protected String outputColumns = "bigint";
 
-        @Param({"1", "16"})
+        @Param({"16"})
         protected int partitionCount = 1;
 
         protected List<Page> probePages;
@@ -482,10 +488,27 @@ public class BenchmarkHashBuildAndJoinOperators
         buildContext.setup();
         benchmarkBuildHash(buildContext);
     }
+    private static Path prepareOutputPath(String basePath) {
+        try {
+            Files.createDirectories(Path.of(basePath));
+            long directoriesNum = Objects.requireNonNull(new File(basePath).listFiles(File::isDirectory)).length + 1;
+            Path p = Path.of(basePath, Integer.toString((int) directoriesNum));
+            Files.createDirectories(p);
+            return p;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public static void main(String[] args)
             throws RunnerException
     {
-        benchmark(BenchmarkHashBuildAndJoinOperators.class).run();
+        Path outputPath = prepareOutputPath("jmh");
+        benchmark(BenchmarkHashBuildAndJoinOperators.class)
+//                .withOptions(
+//                        chainedOptionsBuilder -> chainedOptionsBuilder
+//                                .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=text;output=flamegraph", outputPath))
+//                )
+                .includeMethod("benchmarkJoinHash").run();
     }
 }
