@@ -35,7 +35,11 @@ RUN \
     groupadd trino --gid 1000 && \
     useradd trino --uid 1000 --gid 1000 --create-home && \
     mkdir -p /usr/lib/trino /data/trino && \
-    chown -R "trino:trino" /usr/lib/trino /data/trino
+    chown -R "trino:trino" /usr/lib/trino /data/trino && \
+    wget https://github.com/jvm-profiling-tools/async-profiler/releases/download/v2.9/async-profiler-2.9-linux-arm64.tar.gz -O /tmp/async-profiler-2.9-linux-arm64.tar.gz && \
+    tar -xvf /tmp/async-profiler-2.9-linux-arm64.tar.gz -C /tmp/
+
+
 
 ARG TRINO_VERSION
 COPY trino-cli-${TRINO_VERSION}-executable.jar /usr/bin/trino
