@@ -18,6 +18,7 @@ import io.airlift.slice.SliceInput;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
@@ -45,7 +46,7 @@ public class LongApproximateMostFrequentStateSerializer
     }
 
     @Override
-    public void serialize(BigintApproximateMostFrequent.State state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, BigintApproximateMostFrequent.State state, BlockBuilder out)
     {
         if (state.get() == null) {
             out.appendNull();
@@ -56,7 +57,7 @@ public class LongApproximateMostFrequentStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, BigintApproximateMostFrequent.State state)
+    public void deserialize(@GroupId long groupId, Block block, int index, BigintApproximateMostFrequent.State state)
     {
         state.set(new ApproximateMostFrequentHistogram<Long>(
                 VARBINARY.getSlice(block, index),

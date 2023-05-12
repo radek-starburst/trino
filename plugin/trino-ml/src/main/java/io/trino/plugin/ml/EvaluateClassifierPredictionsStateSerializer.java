@@ -23,6 +23,7 @@ import io.airlift.slice.Slices;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import java.io.IOException;
@@ -47,7 +48,7 @@ public class EvaluateClassifierPredictionsStateSerializer
     }
 
     @Override
-    public void serialize(EvaluateClassifierPredictionsState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, EvaluateClassifierPredictionsState state, BlockBuilder out)
     {
         Map<String, Map<String, Integer>> jsonState = new HashMap<>();
         jsonState.put(TRUE_POSITIVES, state.getTruePositives());
@@ -62,7 +63,7 @@ public class EvaluateClassifierPredictionsStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, EvaluateClassifierPredictionsState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, EvaluateClassifierPredictionsState state)
     {
         Slice slice = VARCHAR.getSlice(block, index);
         Map<String, Map<String, Integer>> jsonState;

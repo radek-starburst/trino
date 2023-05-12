@@ -18,6 +18,7 @@ import io.airlift.slice.Slices;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
@@ -32,7 +33,7 @@ public class LongDecimalWithOverflowAndLongStateSerializer
     }
 
     @Override
-    public void serialize(LongDecimalWithOverflowAndLongState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, LongDecimalWithOverflowAndLongState state, BlockBuilder out)
     {
         long count = state.getLong();
         if (count > 0) {
@@ -67,7 +68,7 @@ public class LongDecimalWithOverflowAndLongStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, LongDecimalWithOverflowAndLongState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, LongDecimalWithOverflowAndLongState state)
     {
         if (!block.isNull(index)) {
             Slice slice = VARBINARY.getSlice(block, index);

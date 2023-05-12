@@ -17,6 +17,7 @@ import io.trino.operator.aggregation.state.LongAndDoubleState;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AggregationFunction;
 import io.trino.spi.function.CombineFunction;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.SqlType;
@@ -31,28 +32,28 @@ public final class IntervalDayToSecondAverageAggregation
     private IntervalDayToSecondAverageAggregation() {}
 
     @InputFunction
-    public static void input(LongAndDoubleState state, @SqlType(StandardTypes.INTERVAL_DAY_TO_SECOND) long value)
+    public static void input(LongAndDoubleState state, @SqlType(StandardTypes.INTERVAL_DAY_TO_SECOND) long value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + 1);
-        state.setDouble(state.getDouble() + value);
+        state.setLong(groupId, state.getLong(groupId) + 1);
+        state.setDouble(groupId, state.getDouble(groupId) + value);
     }
 
     @CombineFunction
-    public static void combine(LongAndDoubleState state, LongAndDoubleState otherState)
+    public static void combine(LongAndDoubleState state, LongAndDoubleState otherState, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + otherState.getLong());
-        state.setDouble(state.getDouble() + otherState.getDouble());
+        state.setLong(groupId, state.getLong(groupId) + otherState.getLong(groupId));
+        state.setDouble(groupId,state.getDouble(groupId) + otherState.getDouble(groupId));
     }
 
     @OutputFunction(StandardTypes.INTERVAL_DAY_TO_SECOND)
-    public static void output(LongAndDoubleState state, BlockBuilder out)
+    public static void output(LongAndDoubleState state, BlockBuilder out, @GroupId long groupId)
     {
-        long count = state.getLong();
+        long count = state.getLong(groupId);
         if (count == 0) {
             out.appendNull();
         }
         else {
-            double value = state.getDouble();
+            double value = state.getDouble(groupId);
             INTERVAL_DAY_TIME.writeLong(out, round(value / count));
         }
     }

@@ -16,6 +16,7 @@ package io.trino.operator.aggregation.state;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.spi.type.DoubleType.DOUBLE;
@@ -30,25 +31,25 @@ public class NullableDoubleStateSerializer
     }
 
     @Override
-    public void serialize(NullableDoubleState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, NullableDoubleState state, BlockBuilder out)
     {
-        if (state.isNull()) {
+        if (state.isNull(groupId)) {
             out.appendNull();
         }
         else {
-            DOUBLE.writeDouble(out, state.getValue());
+            DOUBLE.writeDouble(out, state.getValue(groupId));
         }
     }
 
     @Override
-    public void deserialize(Block block, int index, NullableDoubleState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, NullableDoubleState state)
     {
         if (block.isNull(index)) {
-            state.setNull(true);
+            state.setNull(groupId, true);
         }
         else {
-            state.setNull(false);
-            state.setValue(DOUBLE.getDouble(block, index));
+            state.setNull(groupId, false);
+            state.setValue(groupId, DOUBLE.getDouble(block, index));
         }
     }
 }

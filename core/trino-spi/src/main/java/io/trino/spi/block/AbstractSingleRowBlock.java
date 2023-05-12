@@ -72,6 +72,7 @@ public abstract class AbstractSingleRowBlock
     public long getLong(int position, int offset)
     {
         checkFieldIndex(position);
+        new Exception().printStackTrace();
         return getRawFieldBlock(position).getLong(getRowIndex(), offset);
     }
 

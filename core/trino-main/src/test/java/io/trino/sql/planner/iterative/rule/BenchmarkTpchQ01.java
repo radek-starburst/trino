@@ -24,7 +24,6 @@ import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
-import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
@@ -40,39 +39,49 @@ import static org.openjdk.jmh.annotations.Scope.Thread;
 @State(Thread)
 @OutputTimeUnit(MILLISECONDS)
 @BenchmarkMode(AverageTime)
-@Fork(3)
+@Fork(1)
 @Warmup(iterations = 10)
-@Measurement(iterations = 10)
-public class BenchmarkReorderChainedJoins
+@Measurement(iterations = 20)
+public class BenchmarkTpchQ01
 {
     @Benchmark
-    public MaterializedResult benchmarkReorderJoins(BenchmarkInfo benchmarkInfo)
+    public MaterializedResult benchmarkQ01(BenchmarkInfo benchmarkInfo)
     {
         return benchmarkInfo.getQueryRunner().execute(
-                "EXPLAIN SELECT * FROM " +
-                        "nation n1 JOIN nation n2 ON n1.nationkey = n2.nationkey " +
-                        "JOIN nation n3 ON n2.comment = n3.comment " +
-                        "JOIN nation n4 ON n3.name = n4.name " +
-                        "JOIN region r1 ON n4.regionkey = r1.regionkey " +
-                        "JOIN region r2 ON r1.name = r2.name " +
-                        "JOIN region r3 ON r3.comment = r2.comment " +
-                        "JOIN region r4 ON r4.regionkey = r3.regionkey");
+                """
+                    SELECT
+                      l.returnflag,
+                      l.linestatus,
+                      sum(l.quantity)                                       AS sum_qty,
+                      sum(l.extendedprice)                                  AS sum_base_price,
+                      sum(l.extendedprice * (1 - l.discount))               AS sum_disc_price,
+                      sum(l.extendedprice * (1 - l.discount) * (1 + l.tax)) AS sum_charge,
+                      avg(l.quantity)                                       AS avg_qty,
+                      avg(l.extendedprice)                                  AS avg_price,
+                      avg(l.discount)                                       AS avg_disc,
+                      count(*)                                              AS count_order
+                    FROM
+                      "lineitem" AS l
+                    WHERE
+                      l.shipdate <= DATE '1998-12-01' - INTERVAL '90' DAY
+                    GROUP BY
+                      l.returnflag,
+                      l.linestatus
+                    ORDER BY
+                      l.returnflag,
+                      l.linestatus
+                    """);
     }
 
     @State(Thread)
     public static class BenchmarkInfo
     {
-        @Param({"ELIMINATE_CROSS_JOINS", "AUTOMATIC"})
-        private String joinReorderingStrategy;
-
         private LocalQueryRunner queryRunner;
 
         @Setup
         public void setup()
         {
             Session session = testSessionBuilder()
-                    .setSystemProperty("join_reordering_strategy", joinReorderingStrategy)
-                    .setSystemProperty("join_distribution_type", "AUTOMATIC")
                     .setCatalog("tpch")
                     .setSchema("tiny")
                     .build();
@@ -95,6 +104,6 @@ public class BenchmarkReorderChainedJoins
     public static void main(String[] args)
             throws RunnerException
     {
-        benchmark(BenchmarkReorderChainedJoins.class).run();
+        benchmark(BenchmarkTpchQ01.class).run();
     }
 }

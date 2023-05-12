@@ -15,12 +15,7 @@ package io.trino.operator.aggregation;
 
 import io.trino.operator.aggregation.state.NullableDoubleState;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.SqlType;
+import io.trino.spi.function.*;
 import io.trino.spi.type.StandardTypes;
 
 import static io.trino.spi.type.RealType.REAL;
@@ -33,36 +28,36 @@ public final class RealSumAggregation
     private RealSumAggregation() {}
 
     @InputFunction
-    public static void sum(@AggregationState NullableDoubleState state, @SqlType(StandardTypes.REAL) long value)
+    public static void sum(@AggregationState NullableDoubleState state, @SqlType(StandardTypes.REAL) long value, @GroupId long groupId)
     {
-        state.setNull(false);
-        state.setValue(state.getValue() + intBitsToFloat((int) value));
+        state.setNull(groupId, false);
+        state.setValue(groupId, state.getValue(groupId) + intBitsToFloat((int) value));
     }
 
     @CombineFunction
-    public static void combine(@AggregationState NullableDoubleState state, @AggregationState NullableDoubleState otherState)
+    public static void combine(@AggregationState NullableDoubleState state, @AggregationState NullableDoubleState otherState, @GroupId long groupId)
     {
-        if (state.isNull()) {
-            if (otherState.isNull()) {
+        if (state.isNull(groupId)) {
+            if (otherState.isNull(groupId)) {
                 return;
             }
-            state.set(otherState);
+            state.set(groupId, otherState);
             return;
         }
 
-        if (!otherState.isNull()) {
-            state.setValue(state.getValue() + otherState.getValue());
+        if (!otherState.isNull(groupId)) {
+            state.setValue(groupId, state.getValue(groupId) + otherState.getValue(groupId));
         }
     }
 
     @OutputFunction(StandardTypes.REAL)
-    public static void output(@AggregationState NullableDoubleState state, BlockBuilder out)
+    public static void output(@AggregationState NullableDoubleState state, BlockBuilder out, @GroupId long groupId)
     {
-        if (state.isNull()) {
+        if (state.isNull(groupId)) {
             out.appendNull();
         }
         else {
-            REAL.writeLong(out, floatToRawIntBits((float) state.getValue()));
+            REAL.writeLong(out, floatToRawIntBits((float) state.getValue(groupId)));
         }
     }
 }

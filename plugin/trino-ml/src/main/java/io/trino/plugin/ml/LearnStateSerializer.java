@@ -16,6 +16,7 @@ package io.trino.plugin.ml;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.Type;
 
@@ -29,13 +30,13 @@ public class LearnStateSerializer
     }
 
     @Override
-    public void serialize(LearnState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, LearnState state, BlockBuilder out)
     {
         throw new UnsupportedOperationException("LEARN must run on a single machine");
     }
 
     @Override
-    public void deserialize(Block block, int index, LearnState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, LearnState state)
     {
         throw new UnsupportedOperationException("LEARN must run on a single machine");
     }

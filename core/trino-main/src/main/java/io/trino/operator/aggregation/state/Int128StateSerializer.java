@@ -17,36 +17,35 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
 import io.trino.spi.function.GroupId;
-import io.trino.spi.function.InOut;
+import io.trino.spi.type.DecimalType;
+import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Type;
 
-import static java.util.Objects.requireNonNull;
+import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 
-public final class InOutStateSerializer
-        implements AccumulatorStateSerializer<InOut>
+public class Int128StateSerializer
+        implements AccumulatorStateSerializer<Int128State>
 {
-    private final Type type;
-
-    public InOutStateSerializer(Type type)
-    {
-        this.type = requireNonNull(type, "type is null");
-    }
-
     @Override
     public Type getSerializedType()
     {
-        return type;
+        return DecimalType.createDecimalType(Decimals.MAX_SHORT_PRECISION + 1);
     }
 
     @Override
-    public void serialize(@GroupId long groupId, InOut state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, Int128State state, BlockBuilder out)
     {
-        state.get(out);
+        long[] decimal = state.getArray(groupId);
+        int offset = state.getArrayOffset(groupId);
+        out.writeLong(decimal[offset]).writeLong(decimal[offset + 1]).closeEntry();
     }
 
     @Override
-    public void deserialize(@GroupId long groupId, Block block, int index, InOut state)
+    public void deserialize(@GroupId long groupId, Block block, int index, Int128State state)
     {
-        state.set(block, index);
+        long[] decimal = state.getArray(groupId);
+        int offset = state.getArrayOffset(groupId);
+        decimal[offset] = block.getLong(index, 0);
+        decimal[offset + 1] = block.getLong(index, SIZE_OF_LONG);
     }
 }

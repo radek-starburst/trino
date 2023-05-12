@@ -14,13 +14,7 @@
 package io.trino.operator.aggregation;
 
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.AggregationState;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.RemoveInputFunction;
-import io.trino.spi.function.SqlType;
+import io.trino.spi.function.*;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.StandardTypes;
 import io.trino.type.BigintOperators;
@@ -31,34 +25,36 @@ public final class LongSumAggregation
     private LongSumAggregation() {}
 
     @InputFunction
-    public static void sum(@AggregationState LongLongState state, @SqlType(StandardTypes.BIGINT) long value)
+    public static void sum(@AggregationState LongLongState state, @SqlType(StandardTypes.BIGINT) long value, @GroupId long groupId)
     {
-        state.setFirst(state.getFirst() + 1);
-        state.setSecond(BigintOperators.add(state.getSecond(), value));
+        System.out.println("x");
+
+        state.setFirst(groupId, state.getFirst(groupId) + 1);
+        state.setSecond(groupId, BigintOperators.add(state.getSecond(groupId), value));
     }
 
     @RemoveInputFunction
-    public static void removeInput(@AggregationState LongLongState state, @SqlType(StandardTypes.BIGINT) long value)
+    public static void removeInput(@AggregationState LongLongState state, @SqlType(StandardTypes.BIGINT) long value, @GroupId long groupId)
     {
-        state.setFirst(state.getFirst() - 1);
-        state.setSecond(BigintOperators.subtract(state.getSecond(), value));
+        state.setFirst(groupId, state.getFirst(groupId) - 1);
+        state.setSecond(groupId, BigintOperators.subtract(state.getSecond(groupId), value));
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongLongState state, @AggregationState LongLongState otherState)
+    public static void combine(@AggregationState LongLongState state, @AggregationState LongLongState otherState, @GroupId long groupId)
     {
-        state.setFirst(state.getFirst() + otherState.getFirst());
-        state.setSecond(BigintOperators.add(state.getSecond(), otherState.getSecond()));
+        state.setFirst(groupId, state.getFirst(groupId) + otherState.getFirst(groupId));
+        state.setSecond(groupId, BigintOperators.add(state.getSecond(groupId), otherState.getSecond(groupId)));
     }
 
     @OutputFunction(StandardTypes.BIGINT)
-    public static void output(@AggregationState LongLongState state, BlockBuilder out)
+    public static void output(@AggregationState LongLongState state, BlockBuilder out, @GroupId long groupId)
     {
-        if (state.getFirst() == 0) {
+        if (state.getFirst(groupId) == 0) {
             out.appendNull();
         }
         else {
-            BigintType.BIGINT.writeLong(out, state.getSecond());
+            BigintType.BIGINT.writeLong(out, state.getSecond(groupId));
         }
     }
 }

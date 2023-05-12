@@ -15,11 +15,7 @@ package io.trino.operator.aggregation;
 
 import io.trino.operator.aggregation.state.NullableLongState;
 import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.function.AggregationFunction;
-import io.trino.spi.function.CombineFunction;
-import io.trino.spi.function.InputFunction;
-import io.trino.spi.function.OutputFunction;
-import io.trino.spi.function.SqlType;
+import io.trino.spi.function.*;
 import io.trino.type.BigintOperators;
 
 import static io.trino.spi.type.StandardTypes.INTERVAL_DAY_TO_SECOND;
@@ -31,26 +27,26 @@ public final class IntervalDayToSecondSumAggregation
     private IntervalDayToSecondSumAggregation() {}
 
     @InputFunction
-    public static void sum(NullableLongState state, @SqlType(INTERVAL_DAY_TO_SECOND) long value)
+    public static void sum(NullableLongState state, @SqlType(INTERVAL_DAY_TO_SECOND) long value, @GroupId long groupId)
     {
-        state.setNull(false);
-        state.setValue(BigintOperators.add(state.getValue(), value));
+        state.setNull(groupId, false);
+        state.setValue(groupId, BigintOperators.add(state.getValue(groupId), value));
     }
 
     @CombineFunction
-    public static void combine(NullableLongState state, NullableLongState otherState)
+    public static void combine(NullableLongState state, NullableLongState otherState, @GroupId long groupId)
     {
-        if (state.isNull()) {
-            state.set(otherState);
+        if (state.isNull(groupId)) {
+            state.set(groupId, otherState);
             return;
         }
 
-        state.setValue(BigintOperators.add(state.getValue(), otherState.getValue()));
+        state.setValue(groupId, BigintOperators.add(state.getValue(groupId), otherState.getValue(groupId)));
     }
 
     @OutputFunction(INTERVAL_DAY_TO_SECOND)
-    public static void output(NullableLongState state, BlockBuilder out)
+    public static void output(NullableLongState state, BlockBuilder out, @GroupId long groupId)
     {
-        NullableLongState.write(INTERVAL_DAY_TIME, state, out);
+        NullableLongState.write(groupId, INTERVAL_DAY_TIME, state, out);
     }
 }

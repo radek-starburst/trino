@@ -17,6 +17,7 @@ import io.airlift.stats.TDigest;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.type.TDigestType.TDIGEST;
@@ -31,7 +32,7 @@ public class TDigestStateSerializer
     }
 
     @Override
-    public void serialize(TDigestState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, TDigestState state, BlockBuilder out)
     {
         if (state.getTDigest() == null) {
             out.appendNull();
@@ -42,7 +43,7 @@ public class TDigestStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, TDigestState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, TDigestState state)
     {
         state.setTDigest((TDigest) TDIGEST.getObject(block, index));
     }

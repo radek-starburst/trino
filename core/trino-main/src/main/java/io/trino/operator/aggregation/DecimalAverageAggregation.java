@@ -14,7 +14,11 @@
 package io.trino.operator.aggregation;
 
 import com.google.common.annotations.VisibleForTesting;
+import io.trino.operator.aggregation.state.Int128State;
 import io.trino.operator.aggregation.state.LongDecimalWithOverflowAndLongState;
+import io.trino.operator.aggregation.state.LongState;
+import io.trino.operator.aggregation.state.NullableInt128State;
+import io.trino.operator.aggregation.state.NullableLongState;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AggregationFunction;
@@ -23,6 +27,7 @@ import io.trino.spi.function.BlockIndex;
 import io.trino.spi.function.BlockPosition;
 import io.trino.spi.function.CombineFunction;
 import io.trino.spi.function.Description;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.LiteralParameters;
 import io.trino.spi.function.OutputFunction;
@@ -55,13 +60,16 @@ public final class DecimalAverageAggregation
     @InputFunction
     @LiteralParameters({"p", "s"})
     public static void inputShortDecimal(
-            @AggregationState LongDecimalWithOverflowAndLongState state,
-            @SqlType("decimal(p,s)") long rightLow)
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState counterState,
+            @AggregationState NullableLongState overflowState,
+            @SqlType("decimal(p,s)") long rightLow,
+            @GroupId long groupId)
     {
-        state.addLong(1); // row counter
+        counterState.setValue(groupId, counterState.getValue(groupId) + 1);
 
-        long[] decimal = state.getDecimalArray();
-        int offset = state.getDecimalArrayOffset();
+        long[] decimal = decimalState.getArray(groupId);
+        int offset = decimalState.getArrayOffset(groupId);
 
         long rightHigh = rightLow >> 63;
 
@@ -73,20 +81,26 @@ public final class DecimalAverageAggregation
                 decimal,
                 offset);
 
-        state.addOverflow(overflow);
+        if (overflow != 0) {
+            overflowState.setNull(groupId, false);
+            overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
+        }
     }
 
     @InputFunction
     @LiteralParameters({"p", "s"})
     public static void inputLongDecimal(
-            @AggregationState LongDecimalWithOverflowAndLongState state,
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState counterState,
+            @AggregationState NullableLongState overflowState,
             @BlockPosition @SqlType(value = "decimal(p, s)", nativeContainerType = Int128.class) Block block,
-            @BlockIndex int position)
+            @BlockIndex int position,
+            @GroupId long groupId)
     {
-        state.addLong(1); // row counter
+        counterState.setValue(groupId, counterState.getValue(groupId) + 1);
 
-        long[] decimal = state.getDecimalArray();
-        int offset = state.getDecimalArrayOffset();
+        long[] decimal = decimalState.getArray(groupId);
+        int offset = decimalState.getArrayOffset(groupId);
 
         long rightHigh = block.getLong(position, 0);
         long rightLow = block.getLong(position, SIZE_OF_LONG);
@@ -99,49 +113,69 @@ public final class DecimalAverageAggregation
                 decimal,
                 offset);
 
-        state.addOverflow(overflow);
+        if (overflow != 0) {
+            overflowState.setNull(groupId, false);
+            overflowState.setValue(groupId, overflow + overflowState.getValue(groupId));
+        }
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongDecimalWithOverflowAndLongState state, @AggregationState LongDecimalWithOverflowAndLongState otherState)
+    public static void combine(
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState counterState,
+            @AggregationState NullableLongState overflowState,
+            @AggregationState Int128State otherDecimalState,
+            @AggregationState LongState otherCounterState,
+            @AggregationState NullableLongState otherOverflowState,
+            @GroupId long groupId)
     {
-        state.addLong(otherState.getLong()); // row counter
+        counterState.setValue(groupId, counterState.getValue(groupId) + otherCounterState.getValue(groupId));
 
-        long[] decimal = state.getDecimalArray();
-        int offset = state.getDecimalArrayOffset();
+        long[] decimal = decimalState.getArray(groupId);
+        int offset = decimalState.getArrayOffset(groupId);
 
-        long[] otherDecimal = otherState.getDecimalArray();
-        int otherOffset = otherState.getDecimalArrayOffset();
+        long[] otherDecimal = otherDecimalState.getArray(groupId);
+        int otherOffset = otherDecimalState.getArrayOffset(groupId);
 
-        if (state.getLong() > 0) {
-            long overflow = addWithOverflow(
+        long overflow = 0;
+        if (counterState.getValue(groupId) > 0) {
+            overflow = addWithOverflow(
                     decimal[offset],
                     decimal[offset + 1],
                     otherDecimal[otherOffset],
                     otherDecimal[otherOffset + 1],
                     decimal,
                     offset);
-            state.addOverflow(overflow + otherState.getOverflow());
         }
         else {
             decimal[offset] = otherDecimal[otherOffset];
             decimal[offset + 1] = otherDecimal[otherOffset + 1];
-            state.setOverflow(otherState.getOverflow());
         }
+
+        boolean isOverflowStateNull = otherOverflowState.isNull(groupId);
+        int isOtherOverflowNull = isOverflowStateNull ? 1 : 0;
+        if (overflow != 0 || isOtherOverflowNull == 0) {
+            overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId) * isOtherOverflowNull);
+            overflowState.setNull(groupId, false);
+        }
+
     }
 
     @OutputFunction("decimal(p,s)")
     public static void outputShortDecimal(
             @TypeParameter("decimal(p,s)") Type type,
-            @AggregationState LongDecimalWithOverflowAndLongState state,
-            BlockBuilder out)
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState counterState,
+            @AggregationState NullableLongState overflowState,
+            BlockBuilder out,
+            @GroupId long groupId)
     {
         DecimalType decimalType = (DecimalType) type;
-        if (state.getLong() == 0) {
+        if (counterState.getValue(groupId) == 0) {
             out.appendNull();
             return;
         }
-        Int128 average = average(state, decimalType);
+        Int128 average = average(decimalState, counterState, overflowState, decimalType, groupId);
         if (decimalType.isShort()) {
             writeShortDecimal(out, average.toLongExact());
         }
@@ -151,21 +185,21 @@ public final class DecimalAverageAggregation
     }
 
     @VisibleForTesting
-    public static Int128 average(LongDecimalWithOverflowAndLongState state, DecimalType type)
+    public static Int128 average(Int128State state, LongState counterState, NullableLongState overflowState, DecimalType type, long groupId)
     {
-        long[] decimal = state.getDecimalArray();
-        int offset = state.getDecimalArrayOffset();
+        long[] decimal = state.getArray(groupId);
+        int offset = state.getArrayOffset(groupId);
 
-        long overflow = state.getOverflow();
+        long overflow = overflowState.isNull(groupId) ? 0 : overflowState.getValue(groupId);
         if (overflow != 0) {
             BigDecimal sum = new BigDecimal(Int128.valueOf(decimal[offset], decimal[offset + 1]).toBigInteger(), type.getScale());
             sum = sum.add(new BigDecimal(OVERFLOW_MULTIPLIER.multiply(BigInteger.valueOf(overflow))));
 
-            BigDecimal count = BigDecimal.valueOf(state.getLong());
+            BigDecimal count = BigDecimal.valueOf(counterState.getValue(groupId));
             return Decimals.encodeScaledValue(sum.divide(count, type.getScale(), HALF_UP), type.getScale());
         }
 
-        Int128 result = divideRoundUp(decimal[offset], decimal[offset + 1], 0, 0, state.getLong(), 0);
+        Int128 result = divideRoundUp(decimal[offset], decimal[offset + 1], 0, 0, counterState.getValue(groupId), 0);
         if (overflows(result)) {
             throw new ArithmeticException("Decimal overflow");
         }

@@ -67,6 +67,6 @@ public final class BuildSetDigestAggregation
     @OutputFunction(SetDigestType.NAME)
     public static void output(SetDigestState state, BlockBuilder out)
     {
-        SERIALIZER.serialize(state, out);
+        SERIALIZER.serialize(0, state, out);
     }
 }

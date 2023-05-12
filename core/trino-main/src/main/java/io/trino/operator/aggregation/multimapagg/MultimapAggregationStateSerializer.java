@@ -19,6 +19,7 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ColumnarRow;
 import io.trino.spi.function.AccumulatorStateSerializer;
 import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
@@ -49,7 +50,7 @@ public class MultimapAggregationStateSerializer
     }
 
     @Override
-    public void serialize(MultimapAggregationState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, MultimapAggregationState state, BlockBuilder out)
     {
         if (state.isEmpty()) {
             out.appendNull();
@@ -66,7 +67,7 @@ public class MultimapAggregationStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, MultimapAggregationState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, MultimapAggregationState state)
     {
         state.reset();
         ColumnarRow columnarRow = toColumnarRow(arrayType.getObject(block, index));

@@ -18,6 +18,7 @@ import io.airlift.slice.Slices;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 import org.apache.datasketches.memory.WritableMemory;
 import org.apache.datasketches.theta.CompactSketch;
@@ -37,30 +38,30 @@ public class DataSketchStateSerializer
     }
 
     @Override
-    public void serialize(DataSketchState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, DataSketchState state, BlockBuilder out)
     {
-        serializeToVarbinary(state, out);
+        serializeToVarbinary(groupId, state, out);
     }
 
-    public static void serializeToVarbinary(DataSketchState state, BlockBuilder out)
+    public static void serializeToVarbinary(long groupId, DataSketchState state, BlockBuilder out)
     {
-        if (state.getUpdateSketch() == null && state.getCompactSketch() == null) {
+        if (state.getUpdateSketch(groupId) == null && state.getCompactSketch(groupId) == null) {
             out.appendNull();
         }
         else {
-            checkArgument(state.getUpdateSketch() == null || state.getCompactSketch() == null, "A state must not have both transient accumulator and combined form set");
-            CompactSketch compactSketch = Optional.ofNullable(state.getCompactSketch())
-                    .orElseGet(() -> state.getUpdateSketch().compact());
+            checkArgument(state.getUpdateSketch(groupId) == null || state.getCompactSketch(groupId) == null, "A state must not have both transient accumulator and combined form set");
+            CompactSketch compactSketch = Optional.ofNullable(state.getCompactSketch(groupId))
+                    .orElseGet(() -> state.getUpdateSketch(groupId).compact());
             Slice slice = Slices.wrappedBuffer(compactSketch.toByteArray());
             VARBINARY.writeSlice(out, slice);
         }
     }
 
     @Override
-    public void deserialize(Block block, int index, DataSketchState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, DataSketchState state)
     {
         if (!block.isNull(index)) {
-            state.setCompactSketch(deserialize(block, index));
+            state.setCompactSketch(groupId, deserialize(block, index));
         }
     }
 
