@@ -44,6 +44,7 @@ import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.RemoveInputFunction;
 import io.trino.spi.function.Signature;
 import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.*;
 import io.trino.spi.type.TypeSignature;
 
 import java.lang.annotation.Annotation;
@@ -310,7 +311,9 @@ public final class AggregationFromAnnotationsParser
                 .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(TypeParameter.class::isInstance))
                 .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(LiteralParameter.class::isInstance))
                 .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(OperatorDependency.class::isInstance))
-                .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(FunctionDependency.class::isInstance));
+                .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(FunctionDependency.class::isInstance))
+                .filter(i -> Arrays.stream(parameterAnnotations[i]).noneMatch(GroupId.class::isInstance));
+
     }
 
     private static List<Class<?>> getNonDependencyParameterTypes(Method function)

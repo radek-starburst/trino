@@ -18,6 +18,7 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AggregationFunction;
 import io.trino.spi.function.AggregationState;
 import io.trino.spi.function.CombineFunction;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.SqlType;
@@ -33,28 +34,28 @@ public final class RealGeometricMeanAggregations
     private RealGeometricMeanAggregations() {}
 
     @InputFunction
-    public static void input(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.REAL) long value)
+    public static void input(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.REAL) long value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + 1);
-        state.setDouble(state.getDouble() + Math.log(intBitsToFloat((int) value)));
+        state.setLong(groupId, state.getLong(groupId) + 1);
+        state.setDouble(groupId, state.getDouble(groupId) + Math.log(intBitsToFloat((int) value)));
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongAndDoubleState state, @AggregationState LongAndDoubleState otherState)
+    public static void combine(@AggregationState LongAndDoubleState state, @AggregationState LongAndDoubleState otherState, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + otherState.getLong());
-        state.setDouble(state.getDouble() + otherState.getDouble());
+        state.setLong(groupId, state.getLong(groupId) + otherState.getLong(groupId));
+        state.setDouble(groupId, state.getDouble(groupId) + otherState.getDouble(groupId));
     }
 
     @OutputFunction(StandardTypes.REAL)
-    public static void output(@AggregationState LongAndDoubleState state, BlockBuilder out)
+    public static void output(@AggregationState LongAndDoubleState state, BlockBuilder out, @GroupId long groupId)
     {
-        long count = state.getLong();
+        long count = state.getLong(groupId);
         if (count == 0) {
             out.appendNull();
         }
         else {
-            REAL.writeLong(out, floatToRawIntBits((float) Math.exp(state.getDouble() / count)));
+            REAL.writeLong(out, floatToRawIntBits((float) Math.exp(state.getDouble(groupId) / count)));
         }
     }
 }

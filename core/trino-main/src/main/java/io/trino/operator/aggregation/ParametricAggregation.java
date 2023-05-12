@@ -164,15 +164,18 @@ public class ParametricAggregation
                         functionBinding,
                         functionDependencies),
                 boundSignature,
-                inputParameterKinds));
+                inputParameterKinds,
+                concreteImplementation.hasAggregationFunctionGroupIdParam("input")));
         concreteImplementation.getRemoveInputFunction()
                 .map(removeInputFunction -> bindDependencies(
                         removeInputFunction,
                         concreteImplementation.getRemoveInputDependencies(),
                         functionBinding,
                         functionDependencies))
-                .map(removeInputFunction -> normalizeInputMethod(removeInputFunction, boundSignature, inputParameterKinds))
+                .map(removeInputFunction -> normalizeInputMethod(removeInputFunction, boundSignature, inputParameterKinds, concreteImplementation.hasAggregationFunctionGroupIdParam("removeInput")))
                 .ifPresent(builder::removeInputFunction);
+
+        builder.setExplicitGroupId(concreteImplementation.hasAggregationFunctionGroupIdParam("input"));
 
         if (getAggregationMetadata().isDecomposable()) {
             MethodHandle combineHandle = concreteImplementation.getCombineFunction()

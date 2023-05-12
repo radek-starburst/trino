@@ -21,6 +21,7 @@ import io.trino.spi.function.AggregationState;
 import io.trino.spi.function.BlockIndex;
 import io.trino.spi.function.BlockPosition;
 import io.trino.spi.function.CombineFunction;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.SqlType;
@@ -39,25 +40,25 @@ public final class MaxDataSizeForStats
 
     @InputFunction
     @TypeParameter("T")
-    public static void input(@AggregationState LongState state, @NullablePosition @BlockPosition @SqlType("T") Block block, @BlockIndex int index)
+    public static void input(@AggregationState LongState state, @NullablePosition @BlockPosition @SqlType("T") Block block, @BlockIndex int index, @GroupId long groupId)
     {
-        update(state, block.getEstimatedDataSizeForStats(index));
+        update(state, block.getEstimatedDataSizeForStats(index), groupId);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongState state, @AggregationState LongState otherState)
+    public static void combine(@AggregationState LongState state, @AggregationState LongState otherState, @GroupId long groupId)
     {
-        update(state, otherState.getValue());
+        update(state, otherState.getValue(groupId), groupId);
     }
 
-    private static void update(LongState state, long size)
+    private static void update(LongState state, long size, long groupId)
     {
-        state.setValue(max(state.getValue(), size));
+        state.setValue(max(state.getValue(groupId), size), groupId);
     }
 
     @OutputFunction(StandardTypes.BIGINT)
-    public static void output(@AggregationState LongState state, BlockBuilder out)
+    public static void output(@AggregationState LongState state, BlockBuilder out, @GroupId long groupId)
     {
-        BigintType.BIGINT.writeLong(out, state.getValue());
+        BigintType.BIGINT.writeLong(out, state.getValue(groupId));
     }
 }

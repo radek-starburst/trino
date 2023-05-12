@@ -67,20 +67,20 @@ public class TestStateCompiler
         NullableLongState state = factory.createSingleState();
         NullableLongState deserializedState = factory.createSingleState();
 
-        state.setValue(2);
-        state.setNull(false);
+        state.setValue(0, 2);
+        state.setNull(0, false);
 
         BlockBuilder builder = BIGINT.createBlockBuilder(null, 2);
-        serializer.serialize(state, builder);
-        state.setNull(true);
-        serializer.serialize(state, builder);
+        serializer.serialize(0, state, builder);
+        state.setNull(0, true);
+        serializer.serialize(0,state, builder);
 
         Block block = builder.build();
 
         assertFalse(block.isNull(0));
-        assertEquals(BIGINT.getLong(block, 0), state.getValue());
-        serializer.deserialize(block, 0, deserializedState);
-        assertEquals(deserializedState.getValue(), state.getValue());
+        assertEquals(BIGINT.getLong(block, 0), state.getValue(0));
+        serializer.deserialize(0, block, 0, deserializedState);
+        assertEquals(deserializedState.getValue(0), state.getValue(0));
 
         assertTrue(block.isNull(1));
     }
@@ -93,16 +93,16 @@ public class TestStateCompiler
         LongState state = factory.createSingleState();
         LongState deserializedState = factory.createSingleState();
 
-        state.setValue(2);
+        state.setValue(0, 2);
 
         BlockBuilder builder = BIGINT.createBlockBuilder(null, 1);
-        serializer.serialize(state, builder);
+        serializer.serialize(0, state, builder);
 
         Block block = builder.build();
 
-        assertEquals(BIGINT.getLong(block, 0), state.getValue());
-        serializer.deserialize(block, 0, deserializedState);
-        assertEquals(deserializedState.getValue(), state.getValue());
+        assertEquals(BIGINT.getLong(block, 0), state.getValue(0));
+        serializer.deserialize(0, block, 0, deserializedState);
+        assertEquals(deserializedState.getValue(0), state.getValue(0));
     }
 
     @Test
@@ -123,10 +123,10 @@ public class TestStateCompiler
         state.setBoolean(true);
 
         BlockBuilder builder = BOOLEAN.createBlockBuilder(null, 1);
-        serializer.serialize(state, builder);
+        serializer.serialize(0, state, builder);
 
         Block block = builder.build();
-        serializer.deserialize(block, 0, deserializedState);
+        serializer.deserialize(0, block, 0, deserializedState);
         assertEquals(deserializedState.isBoolean(), state.isBoolean());
     }
 
@@ -141,10 +141,10 @@ public class TestStateCompiler
         state.setByte((byte) 3);
 
         BlockBuilder builder = TINYINT.createBlockBuilder(null, 1);
-        serializer.serialize(state, builder);
+        serializer.serialize(0, state, builder);
 
         Block block = builder.build();
-        serializer.deserialize(block, 0, deserializedState);
+        serializer.deserialize(0, block, 0, deserializedState);
         assertEquals(deserializedState.getByte(), state.getByte());
     }
 
@@ -158,16 +158,16 @@ public class TestStateCompiler
 
         state.setSlice(null);
         BlockBuilder nullBlockBuilder = VARCHAR.createBlockBuilder(null, 1);
-        serializer.serialize(state, nullBlockBuilder);
+        serializer.serialize(0, state, nullBlockBuilder);
         Block nullBlock = nullBlockBuilder.build();
-        serializer.deserialize(nullBlock, 0, deserializedState);
+        serializer.deserialize(0, nullBlock, 0, deserializedState);
         assertEquals(deserializedState.getSlice(), state.getSlice());
 
         state.setSlice(utf8Slice("test"));
         BlockBuilder builder = VARCHAR.createBlockBuilder(null, 1);
-        serializer.serialize(state, builder);
+        serializer.serialize(0, state, builder);
         Block block = builder.build();
-        serializer.deserialize(block, 0, deserializedState);
+        serializer.deserialize(0, block, 0, deserializedState);
         assertEquals(deserializedState.getSlice(), state.getSlice());
     }
 
@@ -184,10 +184,10 @@ public class TestStateCompiler
         singleState.setM2(3);
 
         BlockBuilder builder = RowType.anonymous(ImmutableList.of(BIGINT, DOUBLE, DOUBLE)).createBlockBuilder(null, 1);
-        serializer.serialize(singleState, builder);
+        serializer.serialize(0, singleState, builder);
 
         Block block = builder.build();
-        serializer.deserialize(block, 0, deserializedState);
+        serializer.deserialize(0, block, 0, deserializedState);
 
         assertEquals(deserializedState.getCount(), singleState.getCount());
         assertEquals(deserializedState.getMean(), singleState.getMean());
@@ -219,10 +219,10 @@ public class TestStateCompiler
 
         BlockBuilder builder = RowType.anonymous(ImmutableList.of(mapType, VARBINARY, arrayType, BOOLEAN, TINYINT, DOUBLE, INTEGER, BIGINT, VARBINARY, VARBINARY))
                 .createBlockBuilder(null, 1);
-        serializer.serialize(singleState, builder);
+        serializer.serialize(0, singleState, builder);
 
         Block block = builder.build();
-        serializer.deserialize(block, 0, deserializedState);
+        serializer.deserialize(0, block, 0, deserializedState);
 
         assertEquals(deserializedState.getBoolean(), singleState.getBoolean());
         assertEquals(deserializedState.getLong(), singleState.getLong());

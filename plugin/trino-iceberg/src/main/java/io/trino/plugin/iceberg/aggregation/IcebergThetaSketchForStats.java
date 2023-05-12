@@ -20,6 +20,7 @@ import io.trino.spi.function.AggregationState;
 import io.trino.spi.function.BlockIndex;
 import io.trino.spi.function.BlockPosition;
 import io.trino.spi.function.CombineFunction;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.SqlType;
@@ -54,7 +55,7 @@ public final class IcebergThetaSketchForStats
 
     @InputFunction
     @TypeParameter("T")
-    public static void input(@TypeParameter("T") Type type, @AggregationState DataSketchState state, @BlockPosition @SqlType("T") Block block, @BlockIndex int index)
+    public static void input(@TypeParameter("T") Type type, @AggregationState DataSketchState state, @BlockPosition @SqlType("T") Block block, @BlockIndex int index, @GroupId long groupId)
     {
         verify(!block.isNull(index), "Input function is not expected to be called on a NULL input");
 
@@ -64,41 +65,41 @@ public final class IcebergThetaSketchForStats
         ByteBuffer byteBuffer = Conversions.toByteBuffer(icebergType, icebergValue);
         requireNonNull(byteBuffer, "byteBuffer is null"); // trino value isn't null
         byte[] bytes = getBytes(byteBuffer);
-        getOrCreateUpdateSketch(state).update(bytes);
+        getOrCreateUpdateSketch(state, groupId).update(bytes);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState DataSketchState state, @AggregationState DataSketchState otherState)
+    public static void combine(@AggregationState DataSketchState state, @AggregationState DataSketchState otherState, @GroupId long groupId)
     {
         Union union = SetOperation.builder().buildUnion();
-        addIfPresent(union, state.getUpdateSketch());
-        addIfPresent(union, state.getCompactSketch());
-        addIfPresent(union, otherState.getUpdateSketch());
-        addIfPresent(union, otherState.getCompactSketch());
+        addIfPresent(union, state.getUpdateSketch(groupId));
+        addIfPresent(union, state.getCompactSketch(groupId));
+        addIfPresent(union, otherState.getUpdateSketch(groupId));
+        addIfPresent(union, otherState.getCompactSketch(groupId));
 
-        state.setUpdateSketch(null);
-        state.setCompactSketch(union.getResult());
+        state.setUpdateSketch(groupId, null);
+        state.setCompactSketch(groupId, union.getResult());
     }
 
     @OutputFunction(StandardTypes.VARBINARY)
-    public static void output(@AggregationState DataSketchState state, BlockBuilder out)
+    public static void output(@AggregationState DataSketchState state, BlockBuilder out, @GroupId long groupId)
     {
-        if (state.getUpdateSketch() == null && state.getCompactSketch() == null) {
-            getOrCreateUpdateSketch(state);
+        if (state.getUpdateSketch(groupId) == null && state.getCompactSketch(groupId) == null) {
+            getOrCreateUpdateSketch(state, groupId);
         }
-        DataSketchStateSerializer.serializeToVarbinary(state, out);
+        DataSketchStateSerializer.serializeToVarbinary(groupId, state, out);
     }
 
-    private static UpdateSketch getOrCreateUpdateSketch(@AggregationState DataSketchState state)
+    private static UpdateSketch getOrCreateUpdateSketch(@AggregationState DataSketchState state, @GroupId long groupId)
     {
-        UpdateSketch sketch = state.getUpdateSketch();
+        UpdateSketch sketch = state.getUpdateSketch(groupId);
         if (sketch == null) {
             // Must match Iceberg table statistics specification
             // https://iceberg.apache.org/puffin-spec/#apache-datasketches-theta-v1-blob-type
             sketch = UpdateSketch.builder()
                     .setFamily(Family.ALPHA)
                     .build();
-            state.setUpdateSketch(sketch);
+            state.setUpdateSketch(groupId, sketch);
         }
         return sketch;
     }

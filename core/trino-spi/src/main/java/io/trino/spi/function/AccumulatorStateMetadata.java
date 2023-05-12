@@ -20,6 +20,7 @@ import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
+// TODO: moze tu zaznaczyc, ze jest explicitGroupId?
 public @interface AccumulatorStateMetadata
 {
     Class<? extends AccumulatorStateSerializer> stateSerializerClass() default AccumulatorStateSerializer.class;

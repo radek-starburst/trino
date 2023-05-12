@@ -22,6 +22,7 @@ import io.airlift.stats.TDigest;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import java.util.List;
@@ -40,7 +41,7 @@ public class TDigestAndPercentileArrayStateSerializer
     }
 
     @Override
-    public void serialize(TDigestAndPercentileArrayState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, TDigestAndPercentileArrayState state, BlockBuilder out)
     {
         if (state.getDigest() == null) {
             out.appendNull();
@@ -70,7 +71,7 @@ public class TDigestAndPercentileArrayStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, TDigestAndPercentileArrayState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, TDigestAndPercentileArrayState state)
     {
         SliceInput input = VARBINARY.getSlice(block, index).getInput();
 

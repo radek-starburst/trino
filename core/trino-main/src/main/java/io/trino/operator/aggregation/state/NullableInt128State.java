@@ -11,19 +11,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.operator.aggregation;
+package io.trino.operator.aggregation.state;
 
 import io.trino.spi.function.AccumulatorState;
+import io.trino.spi.function.AccumulatorStateMetadata;
 import io.trino.spi.function.GroupId;
 
-public interface LongLongState
+@AccumulatorStateMetadata(stateFactoryClass = NullableInt128StateFactory.class, stateSerializerClass = NullableInt128StateSerializer.class)
+public interface NullableInt128State
         extends AccumulatorState
 {
-    long getFirst(@GroupId long groupId);
+    long[] getArray(@GroupId long groupId);
 
-    void setFirst(@GroupId long groupId, long first);
+    int getArrayOffset(@GroupId long groupId);
 
-    long getSecond(@GroupId long groupId);
+    boolean isNotNull(@GroupId long groupId);
 
-    void setSecond(@GroupId long groupId, long second);
+    void setIsNotNull(@GroupId long groupId, boolean isNotNull);
 }

@@ -14,11 +14,12 @@
 package io.trino.operator.aggregation.state;
 
 import io.trino.spi.function.AccumulatorState;
+import io.trino.spi.function.GroupId;
 
 public interface LongState
         extends AccumulatorState
 {
-    long getValue();
+    long getValue(@GroupId long groupId);
 
-    void setValue(long value);
+    void setValue(@GroupId  long groupId, long value);
 }

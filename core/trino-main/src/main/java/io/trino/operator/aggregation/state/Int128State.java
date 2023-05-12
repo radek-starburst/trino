@@ -11,19 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.spi.function;
+package io.trino.operator.aggregation.state;
 
-public interface AccumulatorState
+import io.trino.spi.function.AccumulatorState;
+import io.trino.spi.function.AccumulatorStateMetadata;
+import io.trino.spi.function.GroupId;
+
+@AccumulatorStateMetadata(stateFactoryClass = Int128StateFactory.class, stateSerializerClass = Int128StateSerializer.class)
+public interface Int128State
+        extends AccumulatorState
 {
-    long getEstimatedSize();
+    long[] getArray(@GroupId long groupId);
 
-    default AccumulatorState copy()
-    {
-        throw new UnsupportedOperationException("copy not implemented for " + getClass());
-    }
-
-    default void ensureCapacity(long size) {
-        throw new UnsupportedOperationException("ensureCapacity not implemented for " + getClass());
-    }
-
+    int getArrayOffset(@GroupId long groupId);
 }

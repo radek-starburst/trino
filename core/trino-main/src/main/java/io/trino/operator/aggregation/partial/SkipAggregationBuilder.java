@@ -26,6 +26,7 @@ import io.trino.spi.Page;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.LongArrayBlock;
+import io.trino.spi.block.RowBlockBuilder;
 
 import javax.annotation.Nullable;
 

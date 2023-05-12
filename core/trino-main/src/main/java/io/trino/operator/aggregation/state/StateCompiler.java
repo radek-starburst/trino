@@ -47,6 +47,7 @@ import io.trino.spi.function.AccumulatorStateSerializer;
 import io.trino.spi.function.GroupedAccumulatorState;
 import io.trino.spi.function.InOut;
 import io.trino.spi.function.InternalDataAccessor;
+import io.trino.spi.function.*;
 import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.sql.gen.CallSiteBinder;
@@ -56,6 +57,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -170,7 +172,7 @@ public final class StateCompiler
 
         List<StateField> fields = enumerateFields(clazz, fieldTypes);
         generateGetSerializedType(definition, fields, callSiteBinder);
-        generateSerialize(definition, callSiteBinder, clazz, fields);
+        generateSerialize(definition, callSiteBinder, fields);
         generateDeserialize(definition, callSiteBinder, clazz, fields);
 
         // grouped aggregation state fields use engine classes, so generated class must be able to see both plugin and system classes
@@ -225,12 +227,20 @@ public final class StateCompiler
         return null;
     }
 
+    private static <T extends AccumulatorState> BytecodeExpression generateInvokeSetterOnState(Method setter, BytecodeExpression state, BytecodeExpression groupId, StateField field, BytecodeExpression value) {
+        boolean isStateExplicitlyGroupId = isAccumulatorStateExplicitlyGrouped(field);
+        List<BytecodeExpression> parameters = isStateExplicitlyGroupId ? ImmutableList.of(groupId, value) : ImmutableList.of(value);
+        return state.invoke(setter, parameters);
+    }
+
     private static <T extends AccumulatorState> void generateDeserialize(ClassDefinition definition, CallSiteBinder binder, Class<T> clazz, List<StateField> fields)
     {
+        Parameter groupId = arg("groupId", long.class);
         Parameter block = arg("block", Block.class);
         Parameter index = arg("index", int.class);
         Parameter state = arg("state", AccumulatorState.class);
-        MethodDefinition method = definition.declareMethod(a(PUBLIC), "deserialize", type(void.class), block, index, state);
+
+        MethodDefinition method = definition.declareMethod(a(PUBLIC), "deserialize", type(void.class), groupId, block, index, state);
         BytecodeBlock deserializerBody = method.getBody();
         Scope scope = method.getScope();
         if (fields.size() == 1) {
@@ -239,15 +249,13 @@ public final class StateCompiler
             if (!field.isPrimitiveType()) {
                 deserializerBody.append(new IfStatement()
                         .condition(block.invoke("isNull", boolean.class, index))
-                        .ifTrue(state.cast(setter.getDeclaringClass()).invoke(setter, constantNull(field.getType())))
-                        .ifFalse(state.cast(setter.getDeclaringClass()).invoke(setter, constantType(binder, field.getSqlType()).getValue(block, index))));
+                        .ifTrue(generateInvokeSetterOnState(setter, state.cast(setter.getDeclaringClass()), groupId, field, constantNull(field.getType())))
+                        .ifFalse(generateInvokeSetterOnState(setter, state.cast(setter.getDeclaringClass()), groupId, field, constantType(binder, field.getSqlType()).getValue(block, index))));
             }
             else {
                 // For primitive type, we need to cast here because we serialize byte fields with TINYINT/INTEGER (whose java type is long).
                 deserializerBody.append(
-                        state.cast(setter.getDeclaringClass()).invoke(
-                                setter,
-                                constantType(binder, field.getSqlType()).getValue(block, index).cast(field.getType())));
+                        generateInvokeSetterOnState(setter, state.cast(setter.getDeclaringClass()), groupId, field, constantType(binder, field.getSqlType()).getValue(block, index).cast(field.getType())));
             }
         }
         else if (fields.size() > 1) {
@@ -259,15 +267,13 @@ public final class StateCompiler
                 if (!field.isPrimitiveType()) {
                     deserializerBody.append(new IfStatement()
                             .condition(row.invoke("isNull", boolean.class, constantInt(position)))
-                            .ifTrue(state.cast(setter.getDeclaringClass()).invoke(setter, constantNull(field.getType())))
-                            .ifFalse(state.cast(setter.getDeclaringClass()).invoke(setter, constantType(binder, field.getSqlType()).getValue(row, constantInt(position)))));
+                            .ifTrue(generateInvokeSetterOnState(setter, state.cast(setter.getDeclaringClass()), groupId, field, constantNull(field.getType())))
+                            .ifFalse(generateInvokeSetterOnState(setter, state.cast(setter.getDeclaringClass()), groupId, field, constantType(binder, field.getSqlType()).getValue(row, constantInt(position)))));
                 }
                 else {
                     // For primitive type, we need to cast here because we serialize byte fields with TINYINT/INTEGER (whose java type is long).
                     deserializerBody.append(
-                            state.cast(setter.getDeclaringClass()).invoke(
-                                    setter,
-                                    constantType(binder, field.getSqlType()).getValue(row, constantInt(position)).cast(field.getType())));
+                            generateInvokeSetterOnState(setter, state.cast(setter.getDeclaringClass()), groupId, field, constantType(binder, field.getSqlType()).getValue(row, constantInt(position)).cast(field.getType())));
                 }
                 position++;
             }
@@ -275,11 +281,21 @@ public final class StateCompiler
         deserializerBody.ret();
     }
 
-    private static <T> void generateSerialize(ClassDefinition definition, CallSiteBinder binder, Class<T> clazz, List<StateField> fields)
+    private static boolean isAccumulatorStateExplicitlyGrouped(StateField field) {
+        return Arrays.stream(field.getGetterHeader().getParameters()).anyMatch(it -> it.getAnnotation(GroupId.class) != null);
+    }
+
+    private static <T> void generateSerialize(ClassDefinition definition, CallSiteBinder binder, List<StateField> fields)
     {
+        Parameter groupId = arg("groupId", long.class);
         Parameter state = arg("state", AccumulatorState.class);
         Parameter out = arg("out", BlockBuilder.class);
-        MethodDefinition method = definition.declareMethod(a(PUBLIC), "serialize", type(void.class), state, out);
+        boolean isStateExplicitlyGroupId = isAccumulatorStateExplicitlyGrouped(fields.get(0));
+
+        //TODO assert the state is grouped or not
+
+        MethodDefinition method = definition.declareMethod(a(PUBLIC), "serialize", type(void.class), groupId, state, out);
+
         Scope scope = method.getScope();
         BytecodeBlock serializerBody = method.getBody();
 
@@ -287,10 +303,15 @@ public final class StateCompiler
             serializerBody.append(out.invoke("appendNull", BlockBuilder.class).pop());
         }
         else if (fields.size() == 1) {
-            Method getter = getGetter(clazz, getOnlyElement(fields));
+            // ale ten getter to moze miec explicite argument.
+            Method getter = getGetter(getOnlyElement(fields));
             SqlTypeBytecodeExpression sqlType = constantType(binder, getOnlyElement(fields).getSqlType());
             Variable fieldValue = scope.declareVariable(getter.getReturnType(), "value");
-            serializerBody.append(fieldValue.set(state.cast(getter.getDeclaringClass()).invoke(getter)));
+            if (isStateExplicitlyGroupId) {
+                serializerBody.append(fieldValue.set(state.cast(getter.getDeclaringClass()).invoke(getter, groupId)));
+            } else {
+                serializerBody.append(fieldValue.set(state.cast(getter.getDeclaringClass()).invoke(getter)));
+            }
             if (!getOnlyElement(fields).isPrimitiveType()) {
                 serializerBody.append(new IfStatement()
                         .condition(equal(fieldValue, constantNull(getter.getReturnType())))
@@ -306,10 +327,14 @@ public final class StateCompiler
             Variable rowBuilder = scope.declareVariable(BlockBuilder.class, "rowBuilder");
             serializerBody.append(rowBuilder.set(out.invoke("beginBlockEntry", BlockBuilder.class)));
             for (StateField field : fields) {
-                Method getter = getGetter(clazz, field);
+                Method getter = getGetter(field);
                 SqlTypeBytecodeExpression sqlType = constantType(binder, field.getSqlType());
                 Variable fieldValue = scope.createTempVariable(getter.getReturnType());
-                serializerBody.append(fieldValue.set(state.cast(getter.getDeclaringClass()).invoke(getter)));
+                if (isStateExplicitlyGroupId) {
+                    serializerBody.append(fieldValue.set(state.cast(getter.getDeclaringClass()).invoke(getter, groupId)));
+                } else {
+                    serializerBody.append(fieldValue.set(state.cast(getter.getDeclaringClass()).invoke(getter)));
+                }
                 if (!field.isPrimitiveType()) {
                     serializerBody.append(new IfStatement().condition(equal(fieldValue, constantNull(getter.getReturnType())))
                             .ifTrue(rowBuilder.invoke("appendNull", BlockBuilder.class).pop())
@@ -327,18 +352,13 @@ public final class StateCompiler
 
     private static Method getSetter(Class<?> clazz, StateField field)
     {
-        try {
-            return clazz.getMethod(field.getSetterName(), field.getType());
+        ImmutableList.Builder<Class<?>> parameters = ImmutableList.builder();
+        if (isAccumulatorStateExplicitlyGrouped(field)) {
+            parameters.add(long.class);
         }
-        catch (NoSuchMethodException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static Method getGetter(Class<?> clazz, StateField field)
-    {
-        try {
-            return clazz.getMethod(field.getGetterName());
+        parameters.add(field.getType());
+         try {
+            return clazz.getMethod(field.getSetterName(), parameters.build().toArray(new Class<?>[0]));
         }
         catch (NoSuchMethodException e) {
             throw new RuntimeException(e);
@@ -666,6 +686,11 @@ public final class StateCompiler
         return "getObjectValue";
     }
 
+    private static Method getGetter(StateField field)
+    {
+        return field.getterHeader;
+    }
+
     public static <T extends AccumulatorState> AccumulatorStateFactory<T> generateStateFactory(Class<T> clazz)
     {
         return generateStateFactory(clazz, ImmutableMap.of());
@@ -838,26 +863,30 @@ public final class StateCompiler
 
     private static <T> Class<? extends T> generateGroupedStateClass(Class<T> clazz, Map<String, Type> fieldTypes, DynamicClassLoader classLoader)
     {
+        // Tu musimy miec typ w zaleznosci od czegos innego
+        // TODO: wydzielic esnureCapacity
+        List<StateField> fields = enumerateFields(clazz, fieldTypes);
+        Class<?> superClass = isAccumulatorStateExplicitlyGrouped(fields.get(0)) ? Object.class : AbstractGroupedAccumulatorState.class;
+
         ClassDefinition definition = new ClassDefinition(
-                a(PUBLIC, FINAL),
-                makeClassName("Grouped" + clazz.getSimpleName()),
-                type(AbstractGroupedAccumulatorState.class),
-                type(clazz));
+                  a(PUBLIC, FINAL),
+                  makeClassName("Grouped" + clazz.getSimpleName()),
+                  type(superClass),
+                  type(clazz));
 
         FieldDefinition instanceSize = generateInstanceSize(definition);
 
-        List<StateField> fields = enumerateFields(clazz, fieldTypes);
 
         // Create constructor
         MethodDefinition constructor = definition.declareConstructor(a(PUBLIC));
         constructor.getBody()
                 .append(constructor.getThis())
-                .invokeConstructor(AbstractGroupedAccumulatorState.class);
+                .invokeConstructor(superClass);
 
         // Create ensureCapacity
         MethodDefinition ensureCapacity = definition.declareMethod(a(PUBLIC), "ensureCapacity", type(void.class), arg("size", long.class));
 
-        // Generate fields, constructor, and ensureCapacity
+        // Generate fields, constructor, getters, setters and ensureCapacity
         List<FieldDefinition> fieldDefinitions = new ArrayList<>();
         for (StateField field : fields) {
             fieldDefinitions.add(generateGroupedField(definition, constructor, ensureCapacity, field));
@@ -889,15 +918,19 @@ public final class StateCompiler
     private static FieldDefinition generateField(ClassDefinition definition, MethodDefinition constructor, StateField stateField)
     {
         FieldDefinition field = definition.declareField(a(PRIVATE), UPPER_CAMEL.to(LOWER_CAMEL, stateField.getName()) + "Value", stateField.getType());
+        boolean isFieldGroupIdExplicit = isAccumulatorStateExplicitlyGrouped(stateField);
+        List<Parameter> parameters = isFieldGroupIdExplicit ? ImmutableList.of(arg("groupId", long.class)) : ImmutableList.of();
 
         // Generate getter
-        MethodDefinition getter = definition.declareMethod(a(PUBLIC), stateField.getGetterName(), type(stateField.getType()));
+        MethodDefinition getter = definition.declareMethod(a(PUBLIC), stateField.getterHeader.getName(), type(stateField.getType()), parameters);
         getter.getBody()
                 .append(getter.getThis().getField(field).ret());
 
         // Generate setter
         Parameter value = arg("value", stateField.getType());
-        MethodDefinition setter = definition.declareMethod(a(PUBLIC), stateField.getSetterName(), type(void.class), value);
+
+        parameters = isFieldGroupIdExplicit ? ImmutableList.of(arg("groupId", long.class), value) : ImmutableList.of(value);
+        MethodDefinition setter = definition.declareMethod(a(PUBLIC), stateField.getSetterName(), type(void.class), parameters);
         setter.getBody()
                 .append(setter.getThis().setField(field, value))
                 .ret();
@@ -912,24 +945,36 @@ public final class StateCompiler
     {
         Class<?> bigArrayType = getBigArrayType(stateField.getType());
         FieldDefinition field = definition.declareField(a(PRIVATE), UPPER_CAMEL.to(LOWER_CAMEL, stateField.getName()) + "Values", bigArrayType);
+        boolean isExplicitGroupIdState = isAccumulatorStateExplicitlyGrouped(stateField);
+        Parameter groupIdParam = Parameter.arg("groupId", long.class);
+        List<Parameter> parameters = isExplicitGroupIdState ? ImmutableList.of(groupIdParam) : ImmutableList.of();
 
         // Generate getter
-        MethodDefinition getter = definition.declareMethod(a(PUBLIC), stateField.getGetterName(), type(stateField.getType()));
+        checkArgument(stateField.getterHeader.getParameters().length <= 1,
+                String.format("Method %s is invalid. The maximal allowed number of parameters for getter is 1", stateField.getterHeader.getName()));
+
+        MethodDefinition getter = definition.declareMethod(a(PUBLIC), stateField.getterHeader.getName(), type(stateField.getType()), parameters);
+        BytecodeExpression groupId = isExplicitGroupIdState ? groupIdParam : getter.getThis().invoke("getGroupId", long.class);
+
         getter.getBody()
                 .append(getter.getThis().getField(field).invoke(
                         "get",
                         stateField.getType(),
-                        getter.getThis().invoke("getGroupId", long.class))
+                                groupId)
                         .ret());
 
         // Generate setter
         Parameter value = arg("value", stateField.getType());
-        MethodDefinition setter = definition.declareMethod(a(PUBLIC), stateField.getSetterName(), type(void.class), value);
+        parameters = isExplicitGroupIdState ? ImmutableList.of(groupIdParam, value) : ImmutableList.of(value);
+
+        MethodDefinition setter = definition.declareMethod(a(PUBLIC), stateField.getSetterName(), type(void.class), parameters);
+        groupId = isExplicitGroupIdState ? groupIdParam : setter.getThis().invoke("getGroupId", long.class);
+
         setter.getBody()
                 .append(setter.getThis().getField(field).invoke(
                         "set",
                         void.class,
-                        setter.getThis().invoke("getGroupId", long.class),
+                        groupId,
                         value))
                 .ret();
 
@@ -956,19 +1001,19 @@ public final class StateCompiler
         ImmutableList.Builder<StateField> builder = ImmutableList.builder();
         for (Method method : clazz.getMethods()) {
             // ignore default methods
-            if (method.isDefault() || method.getName().equals("getEstimatedSize")) {
+            if (method.isDefault() || method.getName().equals("getEstimatedSize") || method.getName().equals("ensureCapacity")) {
                 continue;
             }
             if (method.getName().startsWith("get")) {
                 Class<?> type = method.getReturnType();
                 String name = method.getName().substring(3);
-                builder.add(new StateField(name, type, getInitialValue(method), method.getName(), Optional.ofNullable(fieldTypes.get(name))));
+                builder.add(new StateField(name, type, getInitialValue(method), method, Optional.ofNullable(fieldTypes.get(name))));
             }
             if (method.getName().startsWith("is")) {
                 Class<?> type = method.getReturnType();
                 checkArgument(type == boolean.class, "Only boolean is support for 'is' methods");
                 String name = method.getName().substring(2);
-                builder.add(new StateField(name, type, getInitialValue(method), method.getName(), Optional.of(BOOLEAN)));
+                builder.add(new StateField(name, type, getInitialValue(method), method, Optional.of(BOOLEAN)));
             }
         }
 
@@ -1016,14 +1061,16 @@ public final class StateCompiler
 
     private static void checkInterface(Class<?> clazz, List<StateField> fields)
     {
+        // TODO: Tu mozna bez problemu porobic wszystkie checki
         checkArgument(clazz.isInterface(), clazz.getName() + " is not an interface");
         Set<String> setters = new HashSet<>();
         Set<String> getters = new HashSet<>();
         Set<String> isGetters = new HashSet<>();
 
-        Map<String, Class<?>> fieldTypes = new HashMap<>();
+        Map<String, StateField> fieldsByName = new HashMap<>();
+        // Mozna strumieniem
         for (StateField field : fields) {
-            fieldTypes.put(field.getName(), field.getType());
+            fieldsByName.put(field.getName(), field);
         }
 
         for (Method method : clazz.getMethods()) {
@@ -1043,26 +1090,35 @@ public final class StateCompiler
                 continue;
             }
 
+            if (method.getName().equals("ensureCapacity")) {
+                checkArgument(method.getReturnType().equals(long.class), "getEstimatedSize must return long");
+                checkArgument(method.getParameterTypes().length == 0, "getEstimatedSize may not have parameters");
+                continue;
+            }
+
+            //TODO: GroupId
+
             if (method.getName().startsWith("get")) {
                 String name = method.getName().substring(3);
-                checkArgument(fieldTypes.get(name).equals(method.getReturnType()),
-                        "Expected %s to return type %s, but found %s", method.getName(), fieldTypes.get(name), method.getReturnType());
-                checkArgument(method.getParameterTypes().length == 0, "Expected %s to have zero parameters", method.getName());
+                checkArgument(fieldsByName.get(name).type.equals(method.getReturnType()),
+                        "Expected %s to return type %s, but found %s", method.getName(), fieldsByName.get(name).type, method.getReturnType());
+                checkArgument(method.getParameterTypes().length <= 1, "Expected %s to have at most one parameters", method.getName());
                 getters.add(name);
             }
             else if (method.getName().startsWith("is")) {
                 String name = method.getName().substring(2);
-                checkArgument(fieldTypes.get(name) == boolean.class,
-                        "Expected %s to have type boolean, but found %s", name, fieldTypes.get(name));
-                checkArgument(method.getParameterTypes().length == 0, "Expected %s to have zero parameters", method.getName());
+                checkArgument(fieldsByName.get(name).type == boolean.class,
+                        "Expected %s to have type boolean, but found %s", name, fieldsByName.get(name).type);
+                checkArgument(method.getParameterTypes().length <= 1, "Expected %s to have at most one parameters", method.getName());
                 checkArgument(method.getReturnType() == boolean.class, "Expected %s to return boolean", method.getName());
                 isGetters.add(name);
             }
             else if (method.getName().startsWith("set")) {
                 String name = method.getName().substring(3);
-                checkArgument(method.getParameterTypes().length == 1, "Expected setter to have one parameter");
-                checkArgument(fieldTypes.get(name).equals(method.getParameterTypes()[0]),
-                        "Expected %s to accept type %s, but found %s", method.getName(), fieldTypes.get(name), method.getParameterTypes()[0]);
+                checkArgument(method.getParameterTypes().length <= 2, "Expected setter to have at most two parameters");
+                int valueParameterIndex = isAccumulatorStateExplicitlyGrouped(fieldsByName.get(name)) ? 1 : 0;
+                checkArgument(fieldsByName.get(name).type.equals(method.getParameterTypes()[valueParameterIndex]),
+                            "Expected %s to accept type %s, but found %s", method.getName(), fieldsByName.get(name).type, method.getParameterTypes()[valueParameterIndex]);
                 checkArgument(getInitialValue(method) == null, "initial value annotation not allowed on setter");
                 checkArgument(method.getReturnType().equals(void.class), "%s may not return a value", method.getName());
                 setters.add(name);
@@ -1077,17 +1133,17 @@ public final class StateCompiler
     private static final class StateField
     {
         private final String name;
-        private final String getterName;
+        private final Method getterHeader;
         private final Class<?> type;
         private final Object initialValue;
         private final Optional<Type> sqlType;
 
-        private StateField(String name, Class<?> type, Object initialValue, String getterName, Optional<Type> sqlType)
+        private StateField(String name, Class<?> type, Object initialValue, Method getterHeader, Optional<Type> sqlType)
         {
             this.name = requireNonNull(name, "name is null");
             checkArgument(!name.isEmpty(), "name is empty");
             this.type = requireNonNull(type, "type is null");
-            this.getterName = requireNonNull(getterName, "getterName is null");
+            this.getterHeader = requireNonNull(getterHeader, "getterHeader is null");
             this.initialValue = initialValue;
             requireNonNull(sqlType, "sqlType is null");
             if (sqlType.isPresent()) {
@@ -1126,9 +1182,9 @@ public final class StateCompiler
             return Optional.empty();
         }
 
-        String getGetterName()
+        Method getGetterHeader()
         {
-            return getterName;
+            return getterHeader;
         }
 
         String getSetterName()

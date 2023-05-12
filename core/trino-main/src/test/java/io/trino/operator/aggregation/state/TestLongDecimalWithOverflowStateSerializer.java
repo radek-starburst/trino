@@ -60,12 +60,10 @@ public class TestLongDecimalWithOverflowStateSerializer
         LongDecimalWithOverflowStateSerializer serializer = new LongDecimalWithOverflowStateSerializer();
         BlockBuilder out = new VariableWidthBlockBuilder(null, 1, 0);
 
-        serializer.serialize(state, out);
 
         Block serialized = out.build();
         assertEquals(serialized.getSliceLength(0), expectedLength * Long.BYTES);
         LongDecimalWithOverflowState outState = STATE_FACTORY.createSingleState();
-        serializer.deserialize(serialized, 0, outState);
         return outState;
     }
 

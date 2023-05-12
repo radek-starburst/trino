@@ -15,6 +15,7 @@ package io.trino.metadata;
 
 import com.google.common.collect.ImmutableList;
 import io.trino.operator.aggregation.AggregationFromAnnotationsParser;
+import io.trino.operator.aggregation.SumDataSizeForStats;
 import io.trino.spi.function.AggregationFunctionMetadata;
 import io.trino.spi.function.AggregationImplementation;
 import io.trino.spi.function.BoundSignature;
@@ -37,7 +38,7 @@ public abstract class SqlAggregationFunction
             return ImmutableList.copyOf(AggregationFromAnnotationsParser.parseFunctionDefinitions(aggregationDefinition));
         }
         catch (RuntimeException e) {
-            throw new IllegalArgumentException("Invalid aggregation class " + aggregationDefinition.getSimpleName());
+            throw new IllegalArgumentException("Invalid aggregation class " + aggregationDefinition.getSimpleName(), e);
         }
     }
 

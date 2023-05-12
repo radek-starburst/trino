@@ -15,6 +15,7 @@ package io.trino.plugin.geospatial.aggregation;
 
 import com.esri.core.geometry.ogc.OGCGeometry;
 import io.trino.array.ObjectBigArray;
+import io.trino.plugin.geospatial.SpatialPartitioningState;
 import io.trino.spi.function.AccumulatorStateFactory;
 import io.trino.spi.function.GroupedAccumulatorState;
 

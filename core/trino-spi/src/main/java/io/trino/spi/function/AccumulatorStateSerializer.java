@@ -17,11 +17,9 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.type.Type;
 
-public interface AccumulatorStateSerializer<T extends AccumulatorState>
-{
-    Type getSerializedType();
-
-    void serialize(T state, BlockBuilder out);
+// TODO: zastnaowic sie czy nie lepiej miec wspolny interfejs z metoda getSerializedType? I potem podinterfejsy? Wtedy mamy ladniej w deskryptorach, bo jeden typ.
+public interface AccumulatorStateSerializer<T extends AccumulatorState> {
+    void serialize(@GroupId long groupId, T state, BlockBuilder out);
 
     /**
      * Deserialize {@code index}-th position in {@code block} into {@code state}.
@@ -33,5 +31,7 @@ public interface AccumulatorStateSerializer<T extends AccumulatorState>
      * Null positions in {@code block} are skipped and ignored. In other words,
      * {@code block.isNull(index)} is guaranteed to return false.
      */
-    void deserialize(Block block, int index, T state);
+    void deserialize(@GroupId long groupId, Block block, int index, T state);
+
+    Type getSerializedType();
 }

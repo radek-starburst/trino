@@ -15,6 +15,7 @@ package io.trino.plugin.iceberg.aggregation;
 
 import io.trino.spi.function.AccumulatorState;
 import io.trino.spi.function.AccumulatorStateMetadata;
+import io.trino.spi.function.GroupId;
 import org.apache.datasketches.theta.CompactSketch;
 import org.apache.datasketches.theta.UpdateSketch;
 
@@ -22,11 +23,11 @@ import org.apache.datasketches.theta.UpdateSketch;
 public interface DataSketchState
         extends AccumulatorState
 {
-    UpdateSketch getUpdateSketch();
+    UpdateSketch getUpdateSketch(@GroupId long groupId);
 
-    void setUpdateSketch(UpdateSketch value);
+    void setUpdateSketch(@GroupId long groupId, UpdateSketch value);
 
-    CompactSketch getCompactSketch();
+    CompactSketch getCompactSketch(@GroupId long groupId);
 
-    void setCompactSketch(CompactSketch value);
+    void setCompactSketch(@GroupId long groupId, CompactSketch value);
 }

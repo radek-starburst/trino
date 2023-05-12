@@ -100,6 +100,6 @@ public final class ApproximateSetAggregation
     @OutputFunction(StandardTypes.HYPER_LOG_LOG)
     public static void evaluateFinal(@AggregationState HyperLogLogState state, BlockBuilder out)
     {
-        SERIALIZER.serialize(state, out);
+        SERIALIZER.serialize(0, state, out);
     }
 }

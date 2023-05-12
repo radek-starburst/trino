@@ -18,6 +18,7 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AggregationFunction;
 import io.trino.spi.function.AggregationState;
 import io.trino.spi.function.CombineFunction;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.RemoveInputFunction;
@@ -31,34 +32,36 @@ public final class DoubleSumAggregation
     private DoubleSumAggregation() {}
 
     @InputFunction
-    public static void sum(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value)
+    public static void sum(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + 1);
-        state.setDouble(state.getDouble() + value);
+        state.setLong(groupId, state.getLong(groupId) + 1);
+        state.setDouble(groupId, state.getDouble(groupId) + value);
     }
 
     @RemoveInputFunction
-    public static void removeInput(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value)
+    public static void removeInput(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() - 1);
-        state.setDouble(state.getDouble() - value);
+        state.setLong(groupId, state.getLong(groupId) - 1);
+        state.setDouble(groupId, state.getDouble(groupId) - value);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongAndDoubleState state, @AggregationState LongAndDoubleState otherState)
+    public static void combine(@AggregationState LongAndDoubleState state, @AggregationState LongAndDoubleState otherState, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + otherState.getLong());
-        state.setDouble(state.getDouble() + otherState.getDouble());
+        state.setLong(groupId, state.getLong(groupId) + otherState.getLong(groupId));
+        state.setDouble(groupId, state.getDouble(groupId) + otherState.getDouble(groupId));
     }
 
     @OutputFunction(StandardTypes.DOUBLE)
-    public static void output(@AggregationState LongAndDoubleState state, BlockBuilder out)
+    public static void output(@AggregationState LongAndDoubleState state, BlockBuilder out, @GroupId long groupId)
     {
-        if (state.getLong() == 0) {
+        if (state.getLong(groupId) == 0) {
             out.appendNull();
         }
         else {
-            DoubleType.DOUBLE.writeDouble(out, state.getDouble());
+            DoubleType.DOUBLE.writeDouble(out, state.getDouble(groupId));
         }
     }
 }
+
+// TODO: rozbic to na dwa stany

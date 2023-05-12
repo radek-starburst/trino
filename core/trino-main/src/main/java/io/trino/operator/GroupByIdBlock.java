@@ -16,6 +16,7 @@ package io.trino.operator;
 import io.airlift.slice.Slice;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
+import io.trino.spi.block.LongArrayBlock;
 
 import java.util.List;
 import java.util.OptionalInt;

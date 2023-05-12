@@ -18,6 +18,7 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AggregationFunction;
 import io.trino.spi.function.AggregationState;
 import io.trino.spi.function.CombineFunction;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.RemoveInputFunction;
@@ -32,49 +33,49 @@ public final class AverageAggregations
     private AverageAggregations() {}
 
     @InputFunction
-    public static void input(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.BIGINT) long value)
+    public static void input(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.BIGINT) long value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + 1);
-        state.setDouble(state.getDouble() + value);
+        state.setLong(groupId,state.getLong(groupId) + 1);
+        state.setDouble(groupId, state.getDouble(groupId) + value);
     }
 
     @InputFunction
-    public static void input(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value)
+    public static void input(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + 1);
-        state.setDouble(state.getDouble() + value);
+        state.setLong(groupId, state.getLong(groupId) + 1);
+        state.setDouble(groupId, state.getDouble(groupId) + value);
     }
 
     @RemoveInputFunction
-    public static void removeInput(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.BIGINT) long value)
+    public static void removeInput(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.BIGINT) long value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() - 1);
-        state.setDouble(state.getDouble() - value);
+        state.setLong(groupId,state.getLong(groupId) - 1);
+        state.setDouble(groupId, state.getDouble(groupId) - value);
     }
 
     @RemoveInputFunction
-    public static void removeInput(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value)
+    public static void removeInput(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value, @GroupId long groupId)
     {
-        state.setLong(state.getLong() - 1);
-        state.setDouble(state.getDouble() - value);
+        state.setLong(groupId, state.getLong(groupId) - 1);
+        state.setDouble(groupId, state.getDouble(groupId) - value);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongAndDoubleState state, @AggregationState LongAndDoubleState otherState)
+    public static void combine(@AggregationState LongAndDoubleState state, @AggregationState LongAndDoubleState otherState, @GroupId long groupId)
     {
-        state.setLong(state.getLong() + otherState.getLong());
-        state.setDouble(state.getDouble() + otherState.getDouble());
+        state.setLong(groupId, state.getLong(groupId) + otherState.getLong(groupId));
+        state.setDouble(groupId, state.getDouble(groupId) + otherState.getDouble(groupId));
     }
 
     @OutputFunction(StandardTypes.DOUBLE)
-    public static void output(@AggregationState LongAndDoubleState state, BlockBuilder out)
+    public static void output(@AggregationState LongAndDoubleState state, BlockBuilder out, @GroupId long groupId)
     {
-        long count = state.getLong();
+        long count = state.getLong(groupId);
         if (count == 0) {
             out.appendNull();
         }
         else {
-            double value = state.getDouble();
+            double value = state.getDouble(groupId);
             DOUBLE.writeDouble(out, value / count);
         }
     }

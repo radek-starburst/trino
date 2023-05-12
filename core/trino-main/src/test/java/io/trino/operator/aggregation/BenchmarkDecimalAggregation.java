@@ -35,12 +35,20 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.profile.*;
+import org.openjdk.jmh.runner.options.ChainedOptionsBuilder;
 import org.openjdk.jmh.runner.options.WarmupMode;
+import org.testcontainers.shaded.org.apache.commons.io.IOUtils;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.OptionalInt;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.DecimalType.createDecimalType;
@@ -52,9 +60,9 @@ import static org.testng.Assert.assertEquals;
 
 @State(Scope.Thread)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@Fork(3)
-@Warmup(iterations = 10)
-@Measurement(iterations = 10)
+@Fork(1)
+@Warmup(iterations = 6)
+@Measurement(iterations = 12, time = 1000, timeUnit = TimeUnit.MILLISECONDS)
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkDecimalAggregation
 {
@@ -62,7 +70,7 @@ public class BenchmarkDecimalAggregation
 
     @Benchmark
     @OperationsPerInvocation(ELEMENT_COUNT)
-    public GroupedAggregator benchmark(BenchmarkData data)
+    public GroupedAggregator benchmarkAddInput(BenchmarkData data)
     {
         GroupedAggregator aggregator = data.getPartialAggregatorFactory().createGroupedAggregator();
         aggregator.processPage(data.getGroupIds(), data.getValues());
@@ -73,17 +81,15 @@ public class BenchmarkDecimalAggregation
     @OperationsPerInvocation(ELEMENT_COUNT)
     public Block benchmarkEvaluateIntermediate(BenchmarkData data)
     {
-        GroupedAggregator aggregator = data.getPartialAggregatorFactory().createGroupedAggregator();
-        aggregator.processPage(data.getGroupIds(), data.getValues());
-        BlockBuilder builder = aggregator.getType().createBlockBuilder(null, data.getGroupCount());
+        BlockBuilder builder = data.aggregator.getType().createBlockBuilder(null, data.getGroupCount());
         for (int groupId = 0; groupId < data.getGroupCount(); groupId++) {
-            aggregator.evaluate(groupId, builder);
+            data.aggregator.evaluate(groupId, builder);
         }
         return builder.build();
     }
 
     @Benchmark
-    public Block benchmarkEvaluateFinal(BenchmarkData data)
+    public Block benchmarkAddIntermediate(BenchmarkData data)
     {
         GroupedAggregator aggregator = data.getFinalAggregatorFactory().createGroupedAggregator();
         // Add the intermediate input multiple times to invoke the combine behavior
@@ -99,20 +105,22 @@ public class BenchmarkDecimalAggregation
     @State(Scope.Thread)
     public static class BenchmarkData
     {
-        @Param({"SHORT", "LONG"})
+        @Param({"LONG"})
         private String type = "SHORT";
 
-        @Param({"avg", "sum"})
-        private String function = "avg";
+        @Param({"sum"})
+        private String function = "sum";
 
-        @Param({"10", "1000"})
-        private int groupCount = 10;
+        @Param({"10000"})
+        private int groupCount = 1000;
 
         private AggregatorFactory partialAggregatorFactory;
         private AggregatorFactory finalAggregatorFactory;
         private GroupByIdBlock groupIds;
         private Page values;
         private Page intermediateValues;
+        private GroupedAggregator aggregator;
+        private GroupedAggregator aggregatorFilledWithIntermediateValues;
 
         @Setup
         public void setup()
@@ -138,6 +146,11 @@ public class BenchmarkDecimalAggregation
             }
             groupIds = new GroupByIdBlock(groupCount, ids.build());
             intermediateValues = new Page(createIntermediateValues(partialAggregatorFactory.createGroupedAggregator(), groupIds, values));
+            aggregator = getPartialAggregatorFactory().createGroupedAggregator();
+            aggregator.processPage(getGroupIds(), getValues());
+            aggregatorFilledWithIntermediateValues = getFinalAggregatorFactory().createGroupedAggregator();
+            aggregatorFilledWithIntermediateValues.processPage(getGroupIds(), getIntermediateValues());
+            aggregatorFilledWithIntermediateValues.processPage(getGroupIds(), getIntermediateValues());
         }
 
         private Block createIntermediateValues(GroupedAggregator aggregator, GroupByIdBlock groupIds, Page inputPage)
@@ -207,7 +220,7 @@ public class BenchmarkDecimalAggregation
 
         assertEquals(data.groupIds.getPositionCount(), data.getValues().getPositionCount());
 
-        new BenchmarkDecimalAggregation().benchmark(data);
+        new BenchmarkDecimalAggregation().benchmarkAddInput(data);
     }
 
     public static void main(String[] args)
@@ -216,6 +229,38 @@ public class BenchmarkDecimalAggregation
         // ensure the benchmarks are valid before running
         new BenchmarkDecimalAggregation().verify();
 
-        Benchmarks.benchmark(BenchmarkDecimalAggregation.class, WarmupMode.BULK).run();
+        String system = System.getProperty("os.name");
+
+        ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD");
+        String outputDir = String.format(
+                "jmh/%s_%s", IOUtils.toString(pb.start().getInputStream(), StandardCharsets.UTF_8).replace("/", "_").replaceAll("\\s+",""), LocalDateTime.now());
+        new File(outputDir).mkdirs();
+
+        Function<ChainedOptionsBuilder, ChainedOptionsBuilder> baseOptionsBuilderConsumer = (options) ->
+                options
+                        .output(Path.of(outputDir, "stdout.log").toString())
+                        .jvmArgsAppend(
+                                "-Xmx32g");
+//                                "-XX:+UnlockDiagnosticVMOptions",
+//                                "-XX:+PrintAssembly",
+//                                "-XX:+LogCompilation",
+//                                "-XX:+TraceClassLoading");
+        Function<ChainedOptionsBuilder, ChainedOptionsBuilder> profilers = system.equals("Linux")
+                ? (options) ->
+                options
+                        .addProfiler(LinuxPerfProfiler.class)
+                        .addProfiler(LinuxPerfNormProfiler.class)
+                        .addProfiler(LinuxPerfAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir))
+                :  (options) ->
+                options
+                        .addProfiler(AsyncProfiler.class, String.format("dir=%s;output=flamegraph;event=cpu", outputDir))
+                        .addProfiler(DTraceAsmProfiler.class, String.format("hotThreshold=0.05;tooBigThreshold=3000;saveLog=true;saveLogTo=%s", outputDir));
+
+        Benchmarks.benchmark(BenchmarkDecimalAggregation.class)
+                .includeMethod("benchmarkAddInput")
+                .withOptions(optionsBuilder ->
+                        profilers.apply(baseOptionsBuilderConsumer.apply(optionsBuilder))
+                                .build())
+                .run();
     }
 }

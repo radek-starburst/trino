@@ -15,6 +15,7 @@ package io.trino.operator.aggregation;
 
 import com.google.common.base.VerifyException;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.trino.operator.ParametricImplementation;
 import io.trino.operator.aggregation.AggregationFromAnnotationsParser.AccumulatorStateDetails;
 import io.trino.operator.aggregation.AggregationFunctionAdapter.AggregationParameterKind;
@@ -30,6 +31,7 @@ import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.Signature;
 import io.trino.spi.function.SqlType;
 import io.trino.spi.function.TypeParameter;
+import io.trino.spi.function.*;
 import io.trino.spi.type.TypeSignature;
 import io.trino.util.Reflection;
 
@@ -37,6 +39,7 @@ import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.*;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -48,11 +51,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
-import static io.trino.operator.aggregation.AggregationFunctionAdapter.AggregationParameterKind.BLOCK_INDEX;
-import static io.trino.operator.aggregation.AggregationFunctionAdapter.AggregationParameterKind.BLOCK_INPUT_CHANNEL;
-import static io.trino.operator.aggregation.AggregationFunctionAdapter.AggregationParameterKind.INPUT_CHANNEL;
-import static io.trino.operator.aggregation.AggregationFunctionAdapter.AggregationParameterKind.NULLABLE_BLOCK_INPUT_CHANNEL;
-import static io.trino.operator.aggregation.AggregationFunctionAdapter.AggregationParameterKind.STATE;
+import static io.trino.operator.aggregation.AggregationFunctionAdapter.AggregationParameterKind.*;
 import static io.trino.operator.annotations.FunctionsParserHelper.containsAnnotation;
 import static io.trino.operator.annotations.FunctionsParserHelper.createTypeVariableConstraints;
 import static io.trino.operator.annotations.FunctionsParserHelper.parseLiteralParameters;
@@ -105,6 +104,9 @@ public class ParametricAggregationImplementation
     private final List<AggregationParameterKind> inputParameterKinds;
     private final FunctionNullability functionNullability;
 
+    // TODO: change this String!
+    private final Map<String, Boolean> hasAggregationFunctionGroupIdParam;
+
     public ParametricAggregationImplementation(
             Signature signature,
             Class<?> definitionClass,
@@ -117,7 +119,9 @@ public class ParametricAggregationImplementation
             List<ImplementationDependency> removeInputDependencies,
             List<ImplementationDependency> combineDependencies,
             List<ImplementationDependency> outputDependencies,
-            List<AggregationParameterKind> inputParameterKinds)
+            List<AggregationParameterKind> inputParameterKinds,
+            // TODO - moze jako dependencja?
+            Map<String, Boolean> hasAggregationFunctionGroupIdParam)
     {
         this.signature = requireNonNull(signature, "signature cannot be null");
         this.definitionClass = requireNonNull(definitionClass, "definition class cannot be null");
@@ -131,10 +135,11 @@ public class ParametricAggregationImplementation
         this.outputDependencies = requireNonNull(outputDependencies, "outputDependencies cannot be null");
         this.combineDependencies = requireNonNull(combineDependencies, "combineDependencies cannot be null");
         this.inputParameterKinds = requireNonNull(inputParameterKinds, "inputParameterKinds cannot be null");
+        this.hasAggregationFunctionGroupIdParam = requireNonNull(hasAggregationFunctionGroupIdParam, "hasAggregationFunctionGroupIdParam cannot be null");
         this.functionNullability = new FunctionNullability(
                 true,
                 inputParameterKinds.stream()
-                        .filter(parameterType -> parameterType != BLOCK_INDEX && parameterType != STATE)
+                        .filter(parameterType -> parameterType != BLOCK_INDEX && parameterType != STATE && parameterType != GROUP_ID)
                         .map(NULLABLE_BLOCK_INPUT_CHANNEL::equals)
                         .collect(toImmutableList()));
     }
@@ -166,6 +171,15 @@ public class ParametricAggregationImplementation
     {
         return inputFunction;
     }
+
+    public Map<String, Boolean> getHasAggregationFunctionGroupIdParam() {
+        return hasAggregationFunctionGroupIdParam;
+    }
+
+    public boolean hasAggregationFunctionGroupIdParam(String functionName) {
+        return hasAggregationFunctionGroupIdParam.getOrDefault(functionName, false);
+    }
+
 
     public Optional<MethodHandle> getRemoveInputFunction()
     {
@@ -246,7 +260,9 @@ public class ParametricAggregationImplementation
                 removeInputDependencies,
                 combineDependencies,
                 outputDependencies,
-                inputParameterKinds);
+                inputParameterKinds,
+                hasAggregationFunctionGroupIdParam
+                );
     }
 
     public static final class Parser
@@ -262,7 +278,7 @@ public class ParametricAggregationImplementation
         private final List<ImplementationDependency> combineDependencies;
         private final List<ImplementationDependency> outputDependencies;
         private final List<AggregationParameterKind> inputParameterKinds;
-
+        private final Map<String, Boolean> hasAggregationFunctionGroupIdParam;
         private final Signature.Builder signatureBuilder = Signature.builder();
 
         private final Set<String> literalParameters;
@@ -292,6 +308,8 @@ public class ParametricAggregationImplementation
             outputDependencies = parseImplementationDependencies(outputFunction);
             combineDependencies = combineFunction.map(this::parseImplementationDependencies).orElse(ImmutableList.of());
 
+            // parse GroupId parameters
+            hasAggregationFunctionGroupIdParam = parseGroupIdParameters(inputFunction, removeInputFunction, combineFunction, outputFunction);
             // parse input parameters
             inputParameterKinds = parseInputParameterKinds(inputFunction);
 
@@ -323,6 +341,36 @@ public class ParametricAggregationImplementation
             outputHandle = methodHandle(outputFunction);
         }
 
+        private Map<String, Boolean> parseGroupIdParameters(Method inputFunction, Optional<Method> removeInputFunction, Optional<Method> combineFunction, Method outputFunction) {
+            ImmutableMap.Builder<String, Boolean> hasAggregationFunctionGroupIdParam = ImmutableMap.builder();
+
+            Parameter[] parameters = inputFunction.getParameters();
+            Annotation[][] annotations = inputFunction.getParameterAnnotations();
+            boolean hasGroupIdAnnotation = false;
+            for(int i = 0; i < parameters.length; i++) {
+                hasGroupIdAnnotation = Arrays.stream(annotations[i]).anyMatch(annotation -> annotation instanceof GroupId);
+//                checkArgument(!hasGroupIdAnnotation || parameters[i].getType() == long.class, String.format("The @GroupId annotated parameter %s in method %s.%s should by long type", parameters[i].getName(), method.getDeclaringClass(), method.getName()));
+                if(hasGroupIdAnnotation) {
+                    break;
+                }
+            }
+            hasAggregationFunctionGroupIdParam.put("input", hasGroupIdAnnotation);
+
+
+            parameters = removeInputFunction.map(f -> f.getParameters()).orElse(new Parameter[0]);
+            annotations = removeInputFunction.map(f -> f.getParameterAnnotations()).orElse(new Annotation[0][]);
+            hasGroupIdAnnotation = false;
+            for(int i = 0; i < parameters.length; i++) {
+                hasGroupIdAnnotation = Arrays.stream(annotations[i]).anyMatch(annotation -> annotation instanceof GroupId);
+//                checkArgument(!hasGroupIdAnnotation || parameters[i].getType() == long.class, String.format("The @GroupId annotated parameter %s in method %s.%s should by long type", parameters[i].getName(), method.getDeclaringClass(), method.getName()));
+                if(hasGroupIdAnnotation) {
+                    break;
+                }
+            }
+            hasAggregationFunctionGroupIdParam.put("removeInput", hasGroupIdAnnotation);
+            return hasAggregationFunctionGroupIdParam.build();
+        }
+
         private ParametricAggregationImplementation get()
         {
             return new ParametricAggregationImplementation(
@@ -337,7 +385,8 @@ public class ParametricAggregationImplementation
                     removeInputDependencies,
                     combineDependencies,
                     outputDependencies,
-                    inputParameterKinds);
+                    inputParameterKinds,
+                    hasAggregationFunctionGroupIdParam);
         }
 
         public static ParametricAggregationImplementation parseImplementation(
@@ -354,6 +403,7 @@ public class ParametricAggregationImplementation
 
         private static List<AggregationParameterKind> parseInputParameterKinds(Method method)
         {
+            //TODO: We can catch here @GroupId in aggregation function.
             ImmutableList.Builder<AggregationParameterKind> builder = ImmutableList.builder();
 
             Annotation[][] annotations = method.getParameterAnnotations();
@@ -386,6 +436,9 @@ public class ParametricAggregationImplementation
                 else if (baseTypeAnnotation instanceof BlockIndex) {
                     builder.add(BLOCK_INDEX);
                 }
+                else if (baseTypeAnnotation instanceof GroupId) {
+                    // builder.add(GROUP_ID); TODO:
+                }
                 else {
                     throw new VerifyException("Unhandled annotation: " + baseTypeAnnotation);
                 }
@@ -410,7 +463,7 @@ public class ParametricAggregationImplementation
         private static Annotation baseTypeAnnotation(Annotation[] annotations, String methodName)
         {
             List<Annotation> baseTypes = Arrays.asList(annotations).stream()
-                    .filter(annotation -> isAggregationMetaAnnotation(annotation) || annotation instanceof SqlType)
+                    .filter(annotation -> isAggregationMetaAnnotation(annotation) || annotation instanceof SqlType || annotation instanceof GroupId)
                     .collect(toImmutableList());
 
             checkArgument(baseTypes.size() == 1, "Parameter of %s must have exactly one of @SqlType, @BlockIndex", methodName);
@@ -538,7 +591,7 @@ public class ParametricAggregationImplementation
 
         private static boolean isAggregationMetaAnnotation(Annotation annotation)
         {
-            return annotation instanceof BlockIndex || annotation instanceof AggregationState || isImplementationDependencyAnnotation(annotation);
+            return annotation instanceof BlockIndex || annotation instanceof AggregationState || isImplementationDependencyAnnotation(annotation) || annotation instanceof GroupId;
         }
     }
 }

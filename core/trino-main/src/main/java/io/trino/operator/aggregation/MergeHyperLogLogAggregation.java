@@ -64,6 +64,6 @@ public final class MergeHyperLogLogAggregation
     @OutputFunction(StandardTypes.HYPER_LOG_LOG)
     public static void output(@AggregationState HyperLogLogState state, BlockBuilder out)
     {
-        serializer.serialize(state, out);
+        serializer.serialize(0, state, out);
     }
 }

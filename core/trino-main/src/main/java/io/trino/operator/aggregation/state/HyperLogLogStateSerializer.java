@@ -17,6 +17,7 @@ import io.airlift.stats.cardinality.HyperLogLog;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.Type;
 
 import static io.trino.spi.type.HyperLogLogType.HYPER_LOG_LOG;
@@ -31,7 +32,7 @@ public class HyperLogLogStateSerializer
     }
 
     @Override
-    public void serialize(HyperLogLogState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, HyperLogLogState state, BlockBuilder out)
     {
         if (state.getHyperLogLog() == null) {
             out.appendNull();
@@ -42,7 +43,7 @@ public class HyperLogLogStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, HyperLogLogState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, HyperLogLogState state)
     {
         state.setHyperLogLog(HyperLogLog.newInstance(HYPER_LOG_LOG.getSlice(block, index)));
     }

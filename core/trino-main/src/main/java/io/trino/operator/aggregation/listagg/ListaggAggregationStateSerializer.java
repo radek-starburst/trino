@@ -20,6 +20,7 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ColumnarRow;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
@@ -48,7 +49,7 @@ public class ListaggAggregationStateSerializer
     }
 
     @Override
-    public void serialize(ListaggAggregationState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, ListaggAggregationState state, BlockBuilder out)
     {
         if (state.isEmpty()) {
             out.appendNull();
@@ -72,7 +73,7 @@ public class ListaggAggregationStateSerializer
     }
 
     @Override
-    public void deserialize(Block block, int index, ListaggAggregationState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, ListaggAggregationState state)
     {
         checkArgument(block instanceof AbstractRowBlock);
         ColumnarRow columnarRow = toColumnarRow(block);

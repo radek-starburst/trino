@@ -16,6 +16,7 @@ package io.trino.operator.aggregation.histogram;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.function.AccumulatorStateSerializer;
+import io.trino.spi.function.GroupId;
 import io.trino.spi.function.TypeParameter;
 import io.trino.spi.type.Type;
 
@@ -38,13 +39,13 @@ public class HistogramStateSerializer
     }
 
     @Override
-    public void serialize(HistogramState state, BlockBuilder out)
+    public void serialize(@GroupId long groupId, HistogramState state, BlockBuilder out)
     {
         state.get().serialize(out);
     }
 
     @Override
-    public void deserialize(Block block, int index, HistogramState state)
+    public void deserialize(@GroupId long groupId, Block block, int index, HistogramState state)
     {
         state.deserialize((Block) serializedType.getObject(block, index), EXPECTED_SIZE_FOR_HASHING);
     }
