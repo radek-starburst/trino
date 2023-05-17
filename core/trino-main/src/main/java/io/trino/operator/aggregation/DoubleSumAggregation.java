@@ -15,12 +15,15 @@ package io.trino.operator.aggregation;
 
 import io.trino.operator.aggregation.state.LongAndDoubleState;
 import io.trino.spi.block.BlockBuilder;
+import io.trino.spi.function.AccumulatorState;
+import io.trino.spi.function.AccumulatorStateMetadata;
 import io.trino.spi.function.AggregationFunction;
 import io.trino.spi.function.AggregationState;
 import io.trino.spi.function.CombineFunction;
 import io.trino.spi.function.InputFunction;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.RemoveInputFunction;
+import io.trino.spi.function.SpecificAggregationState;
 import io.trino.spi.function.SqlType;
 import io.trino.spi.type.DoubleType;
 import io.trino.spi.type.StandardTypes;
@@ -31,34 +34,84 @@ public final class DoubleSumAggregation
     private DoubleSumAggregation() {}
 
     @InputFunction
-    public static void sum(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value)
+    public static void sum(@AggregationState DoubleSumState state, @SqlType(StandardTypes.DOUBLE) double value)
     {
-        state.setLong(state.getLong() + 1);
-        state.setDouble(state.getDouble() + value);
+        state.setCounter(state.getCounter() + 1);
+        state.setSum(state.getSum() + value);
     }
 
     @RemoveInputFunction
-    public static void removeInput(@AggregationState LongAndDoubleState state, @SqlType(StandardTypes.DOUBLE) double value)
+    public static void removeInput(@AggregationState DoubleSumState state, @SqlType(StandardTypes.DOUBLE) double value)
     {
-        state.setLong(state.getLong() - 1);
-        state.setDouble(state.getDouble() - value);
+        state.setCounter(state.getCounter() - 1);
+        state.setSum(state.getSum() - value);
     }
 
     @CombineFunction
-    public static void combine(@AggregationState LongAndDoubleState state, @AggregationState LongAndDoubleState otherState)
+    public static void combine(@AggregationState DoubleSumState state, @AggregationState DoubleSumState otherState)
     {
-        state.setLong(state.getLong() + otherState.getLong());
-        state.setDouble(state.getDouble() + otherState.getDouble());
+        state.setCounter(state.getCounter() + otherState.getCounter());
+        state.setSum(state.getSum() + otherState.getSum());
     }
 
     @OutputFunction(StandardTypes.DOUBLE)
-    public static void output(@AggregationState LongAndDoubleState state, BlockBuilder out)
+    public static void output(@AggregationState DoubleSumState state, BlockBuilder out)
     {
-        if (state.getLong() == 0) {
+        if (state.getCounter() == 0) {
             out.appendNull();
         }
         else {
-            DoubleType.DOUBLE.writeDouble(out, state.getDouble());
+            DoubleType.DOUBLE.writeDouble(out, state.getSum());
+        }
+    }
+
+    @AccumulatorStateMetadata(stateFactoryClass = DoubleSumStateFactory.class, stateSerializerClass = DoubleSumStateSerializer.class)
+    public interface DoubleSumAccumulatorState extends AccumulatorState {
+        double getSum();
+        long getCounter();
+
+        void setCounter(long counter);
+
+        void setSum(double sum);
+    }
+
+    public static class DoubleSumState implements DoubleSumAccumulatorState {
+
+        public DoubleSumState(double sum, long counter) {
+            this.counter = counter;
+            this.sum = sum;
+        }
+
+        public DoubleSumState() {
+
+        }
+
+        private double sum;
+        private long counter;
+
+        public double getSum() {
+            return sum;
+        }
+        public long getCounter() {
+            return counter;
+        }
+
+        public void setCounter(long counter) {
+            this.counter = counter;
+        }
+
+        public void setSum(double sum) {
+            this.sum = sum;
+        }
+
+        @Override
+        public long getEstimatedSize() {
+            return 0;
+        }
+
+        @Override
+        public AccumulatorState copy() {
+            return new DoubleSumState(sum, counter);
         }
     }
 }

@@ -34,4 +34,8 @@ public interface AccumulatorStateSerializer<T extends AccumulatorState>
      * {@code block.isNull(index)} is guaranteed to return false.
      */
     void deserialize(Block block, int index, T state);
+
+    default int getPositionsPerState() {     // To jest hack, ale on ma pokazac, ze serializacja stanu musi byc szczegolem stanu agregacji
+        return 1;
+    }
 }

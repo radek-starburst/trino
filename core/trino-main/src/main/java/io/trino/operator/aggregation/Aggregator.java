@@ -30,7 +30,7 @@ import static java.util.Objects.requireNonNull;
 public class Aggregator
 {
     private final Accumulator accumulator;
-    private final Step step;
+    public final Step step;
     private final Type intermediateType;
     private final Type finalType;
     private final int[] inputChannels;
@@ -76,15 +76,20 @@ public class Aggregator
     public void evaluate(BlockBuilder blockBuilder)
     {
         if (step.isOutputPartial()) {
-            accumulator.evaluateIntermediate(blockBuilder);
+            accumulator.evaluateIntermediate(0, blockBuilder);
         }
         else {
-            accumulator.evaluateFinal(blockBuilder);
+            System.out.println("evaluateFinal");
+            accumulator.evaluateFinal(0, blockBuilder);
         }
     }
 
     public long getEstimatedSize()
     {
         return accumulator.getEstimatedSize();
+    }
+
+    public int getSerializedRows() {
+        return accumulator.getSerializedRows();
     }
 }

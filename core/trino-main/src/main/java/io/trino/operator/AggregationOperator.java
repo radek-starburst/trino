@@ -21,6 +21,7 @@ import io.trino.spi.Page;
 import io.trino.spi.PageBuilder;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.type.Type;
+import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.sql.planner.plan.PlanNodeId;
 
 import java.util.List;
@@ -154,7 +155,12 @@ public class AggregationOperator
         // so a new PageBuilder is constructed (instead of using PageBuilder.reset)
         PageBuilder pageBuilder = new PageBuilder(1, types);
 
-        pageBuilder.declarePosition();
+        // Tu najwyzej musialbym jako wrapowac
+        if (aggregates.get(0).step == AggregationNode.Step.PARTIAL) {
+            pageBuilder.declarePositions(aggregates.get(0).getSerializedRows());
+        } else {
+            pageBuilder.declarePosition();
+        }
         for (int i = 0; i < aggregates.size(); i++) {
             Aggregator aggregator = aggregates.get(i);
             BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(i);

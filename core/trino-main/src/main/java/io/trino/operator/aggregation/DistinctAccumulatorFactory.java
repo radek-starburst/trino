@@ -164,15 +164,15 @@ public class DistinctAccumulatorFactory
         }
 
         @Override
-        public void evaluateIntermediate(BlockBuilder blockBuilder)
+        public void evaluateIntermediate(int groupId, BlockBuilder blockBuilder)
         {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void evaluateFinal(BlockBuilder blockBuilder)
+        public void evaluateFinal(int groupId, BlockBuilder blockBuilder)
         {
-            accumulator.evaluateFinal(blockBuilder);
+            accumulator.evaluateFinal(groupId, blockBuilder);
         }
     }
 

@@ -33,4 +33,8 @@ public interface GroupedAccumulator
     void evaluateFinal(int groupId, BlockBuilder output);
 
     void prepareFinal();
+
+    default int getSerializedRows() {
+        return 2;
+    }
 }

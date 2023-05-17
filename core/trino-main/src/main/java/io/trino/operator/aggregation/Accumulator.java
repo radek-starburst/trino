@@ -29,7 +29,11 @@ public interface Accumulator
 
     void addIntermediate(Block block);
 
-    void evaluateIntermediate(BlockBuilder blockBuilder);
+    void evaluateIntermediate(int groupId, BlockBuilder blockBuilder);
 
-    void evaluateFinal(BlockBuilder blockBuilder);
+    void evaluateFinal(int groupId, BlockBuilder blockBuilder);
+
+    default int getSerializedRows() {
+        return 2;
+    }
 }

@@ -16,6 +16,7 @@ package io.trino.array;
 import io.airlift.slice.SizeOf;
 
 import java.util.Arrays;
+import java.util.function.Supplier;
 
 import static io.airlift.slice.SizeOf.instanceSize;
 import static io.airlift.slice.SizeOf.sizeOfObjectArray;
@@ -31,7 +32,7 @@ public final class ObjectBigArray<T>
     private static final int INSTANCE_SIZE = instanceSize(ObjectBigArray.class);
     private static final long SIZE_OF_SEGMENT = sizeOfObjectArray(SEGMENT_SIZE);
 
-    private final Object initialValue;
+    private final Supplier<Object> initialValue;
 
     private Object[][] array;
     private long capacity;
@@ -47,10 +48,18 @@ public final class ObjectBigArray<T>
 
     public ObjectBigArray(Object initialValue)
     {
+        this.initialValue = () -> initialValue;
+        array = new Object[INITIAL_SEGMENTS][];
+        allocateNewSegment();
+    }
+
+    public ObjectBigArray(Supplier<Object> initialValue)
+    {
         this.initialValue = initialValue;
         array = new Object[INITIAL_SEGMENTS][];
         allocateNewSegment();
     }
+
 
     /**
      * Returns the current available capacity in this array
@@ -66,6 +75,10 @@ public final class ObjectBigArray<T>
     public long sizeOf()
     {
         return INSTANCE_SIZE + SizeOf.sizeOf(array) + (segments * SIZE_OF_SEGMENT);
+    }
+
+    public long getEstimatedSize() {
+        return (long) array.length * 32 + sizeOf();     // rough estimation
     }
 
     /**
@@ -184,7 +197,7 @@ public final class ObjectBigArray<T>
     {
         Object[] newSegment = new Object[SEGMENT_SIZE];
         if (initialValue != null) {
-            Arrays.fill(newSegment, initialValue);
+            Arrays.fill(newSegment, initialValue.get());
         }
         array[segments] = newSegment;
         capacity += SEGMENT_SIZE;

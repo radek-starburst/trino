@@ -148,18 +148,18 @@ public class OrderedAccumulatorFactory
         }
 
         @Override
-        public void evaluateIntermediate(BlockBuilder blockBuilder)
+        public void evaluateIntermediate(int groupId, BlockBuilder blockBuilder)
         {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void evaluateFinal(BlockBuilder blockBuilder)
+        public void evaluateFinal(int groupId, BlockBuilder blockBuilder)
         {
             pagesIndex.sort(orderByChannels, orderings);
             Iterator<Page> pagesIterator = pagesIndex.getSortedPages();
             pagesIterator.forEachRemaining(arguments -> accumulator.addInput(arguments.getColumns(argumentChannels), Optional.empty()));
-            accumulator.evaluateFinal(blockBuilder);
+            accumulator.evaluateFinal(groupId, blockBuilder);
         }
     }
 
