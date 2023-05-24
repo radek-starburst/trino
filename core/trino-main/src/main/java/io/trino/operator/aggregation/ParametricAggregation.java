@@ -166,6 +166,11 @@ public class ParametricAggregation
                 boundSignature,
                 inputParameterKinds,
                 concreteImplementation.hasAggregationFunctionGroupIdParam("input")));
+
+        builder.isStateNullFunction(
+                concreteImplementation.getIsStateNullFunction()
+        );
+
         concreteImplementation.getRemoveInputFunction()
                 .map(removeInputFunction -> bindDependencies(
                         removeInputFunction,

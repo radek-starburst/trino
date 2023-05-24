@@ -29,6 +29,7 @@ public class AggregationImplementation
     private final Optional<MethodHandle> removeInputFunction;
     private final Optional<MethodHandle> combineFunction;
     private final MethodHandle outputFunction;
+    private final Optional<MethodHandle> isStateNullFunction;
     private final List<AccumulatorStateDescriptor<?>> accumulatorStateDescriptors;
     private final List<Class<?>> lambdaInterfaces;
     private final boolean isExplicitGroupId;
@@ -40,7 +41,8 @@ public class AggregationImplementation
             MethodHandle outputFunction,
             List<AccumulatorStateDescriptor<?>> accumulatorStateDescriptors,
             List<Class<?>> lambdaInterfaces,
-            boolean isExplicitGroupId)
+            boolean isExplicitGroupId,
+            Optional<MethodHandle> isStateNullFunction)
     {
         this.inputFunction = requireNonNull(inputFunction, "inputFunction is null");
         this.removeInputFunction = requireNonNull(removeInputFunction, "removeInputFunction is null");
@@ -49,6 +51,7 @@ public class AggregationImplementation
         this.accumulatorStateDescriptors = requireNonNull(accumulatorStateDescriptors, "accumulatorStateDescriptors is null");
         this.lambdaInterfaces = List.copyOf(requireNonNull(lambdaInterfaces, "lambdaInterfaces is null"));
         this.isExplicitGroupId = isExplicitGroupId;
+        this.isStateNullFunction = isStateNullFunction;
     }
 
     public MethodHandle getInputFunction()
@@ -64,6 +67,10 @@ public class AggregationImplementation
     public Optional<MethodHandle> getCombineFunction()
     {
         return combineFunction;
+    }
+
+    public Optional<MethodHandle> getIsStateNullFunction() {
+        return isStateNullFunction;
     }
 
     public MethodHandle getOutputFunction()
@@ -163,12 +170,19 @@ public class AggregationImplementation
         private List<AccumulatorStateDescriptor<?>> accumulatorStateDescriptors = new ArrayList<>();
         private List<Class<?>> lambdaInterfaces = List.of();
         private boolean isExplicitGroupId;
+        private Optional<MethodHandle> isStateNullFunction;
 
         private Builder() {}
 
         public Builder inputFunction(MethodHandle inputFunction)
         {
             this.inputFunction = requireNonNull(inputFunction, "inputFunction is null");
+            return this;
+        }
+
+        public Builder isStateNullFunction(Optional<MethodHandle> isStateNull)
+        {
+            this.isStateNullFunction = requireNonNull(isStateNull, "isStateNullFunction is null");
             return this;
         }
 
@@ -234,7 +248,9 @@ public class AggregationImplementation
                     outputFunction,
                     accumulatorStateDescriptors,
                     lambdaInterfaces,
-                    isExplicitGroupId);
+                    isExplicitGroupId,
+                    isStateNullFunction
+                    );
         }
     }
 }

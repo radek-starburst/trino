@@ -112,6 +112,7 @@ public final class AggregationFromAnnotationsParser
             List<ParametricAggregationImplementation> nonExactImplementations = new ArrayList<>();
             for (Method inputFunction : getInputFunctions(aggregationDefinition, stateDetails)) {
                 Optional<Method> removeInputFunction = getRemoveInputFunction(aggregationDefinition, inputFunction);
+                Optional<Method> isStateNullFunction = getIsStateNullFunction(aggregationDefinition);
                 ParametricAggregationImplementation implementation = parseImplementation(
                         aggregationDefinition,
                         header.getName(),
@@ -119,7 +120,8 @@ public final class AggregationFromAnnotationsParser
                         inputFunction,
                         removeInputFunction,
                         outputFunction,
-                        combineFunction.filter(function -> header.isDecomposable()));
+                        combineFunction.filter(function -> header.isDecomposable()),
+                        isStateNullFunction);
                 if (isGenericOrCalculated(implementation.getSignature())) {
                     exactImplementations.add(implementation);
                 }
@@ -127,6 +129,7 @@ public final class AggregationFromAnnotationsParser
                     nonExactImplementations.add(implementation);
                 }
             }
+
 
             // register a set functions for the canonical name, and each alias
             functions.addAll(buildFunctions(header.getName(), header, stateDetails, exactImplementations, nonExactImplementations));
@@ -340,6 +343,13 @@ public final class AggregationFromAnnotationsParser
                 .filter(method -> Arrays.deepEquals(method.getParameterAnnotations(), inputFunction.getParameterAnnotations()))
                 .collect(MoreCollectors.toOptional());
     }
+
+    private static Optional<Method> getIsStateNullFunction(Class<?> clazz)
+    {
+        List<Method> methods = FunctionsParserHelper.findPublicStaticMethodsWithAnnotation(clazz, IsStateNullFunction.class);
+        return methods.isEmpty() ? Optional.empty() :Optional.of(getOnlyElement(methods));
+    }
+
 
     private static List<AccumulatorStateDetails<?>> getStateDetails(Class<?> clazz)
     {

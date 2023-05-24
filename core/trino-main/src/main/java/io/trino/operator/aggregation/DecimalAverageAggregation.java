@@ -29,6 +29,7 @@ import io.trino.spi.function.CombineFunction;
 import io.trino.spi.function.Description;
 import io.trino.spi.function.GroupId;
 import io.trino.spi.function.InputFunction;
+import io.trino.spi.function.IsStateNullFunction;
 import io.trino.spi.function.LiteralParameters;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.SqlType;
@@ -169,6 +170,17 @@ public final class DecimalAverageAggregation
             type.writeObject(out, average);
         }
     }
+
+    @IsStateNullFunction
+    public static boolean isStateNull(
+            @AggregationState Int128State decimalState,
+            @AggregationState LongState counterState,
+            @AggregationState LongState overflowState,
+            @GroupId long groupId
+    ) {
+        return counterState.getValue(groupId) == 0;
+    }
+
 
     @VisibleForTesting
     public static Int128 average(Int128State state, LongState counterState, LongState overflowState, DecimalType type, long groupId)

@@ -95,6 +95,8 @@ public class ParametricAggregationImplementation
     private final MethodHandle inputFunction;
     private final Optional<MethodHandle> removeInputFunction;
     private final MethodHandle outputFunction;
+
+    private final Optional<MethodHandle> isStateNullFunction;
     private final Optional<MethodHandle> combineFunction;
     private final List<AggregateNativeContainerType> argumentNativeContainerTypes;
     private final List<ImplementationDependency> inputDependencies;
@@ -121,7 +123,8 @@ public class ParametricAggregationImplementation
             List<ImplementationDependency> outputDependencies,
             List<AggregationParameterKind> inputParameterKinds,
             // TODO - moze jako dependencja?
-            Map<String, Boolean> hasAggregationFunctionGroupIdParam)
+            Map<String, Boolean> hasAggregationFunctionGroupIdParam,
+            Optional<MethodHandle> isStateNullFunction)
     {
         this.signature = requireNonNull(signature, "signature cannot be null");
         this.definitionClass = requireNonNull(definitionClass, "definition class cannot be null");
@@ -142,6 +145,7 @@ public class ParametricAggregationImplementation
                         .filter(parameterType -> parameterType != BLOCK_INDEX && parameterType != STATE && parameterType != GROUP_ID)
                         .map(NULLABLE_BLOCK_INPUT_CHANNEL::equals)
                         .collect(toImmutableList()));
+        this.isStateNullFunction = requireNonNull(isStateNullFunction, "isStateNullFunction is null");
     }
 
     @Override
@@ -180,6 +184,9 @@ public class ParametricAggregationImplementation
         return hasAggregationFunctionGroupIdParam.getOrDefault(functionName, false);
     }
 
+    public Optional<MethodHandle> getIsStateNullFunction() {
+        return isStateNullFunction;
+    }
 
     public Optional<MethodHandle> getRemoveInputFunction()
     {
@@ -261,7 +268,8 @@ public class ParametricAggregationImplementation
                 combineDependencies,
                 outputDependencies,
                 inputParameterKinds,
-                hasAggregationFunctionGroupIdParam
+                hasAggregationFunctionGroupIdParam,
+                isStateNullFunction
                 );
     }
 
@@ -272,6 +280,7 @@ public class ParametricAggregationImplementation
         private final Optional<MethodHandle> removeInputHandle;
         private final MethodHandle outputHandle;
         private final Optional<MethodHandle> combineHandle;
+        private final Optional<MethodHandle> isStateNullHandle;
         private final List<AggregateNativeContainerType> argumentNativeContainerTypes;
         private final List<ImplementationDependency> inputDependencies;
         private final List<ImplementationDependency> removeInputDependencies;
@@ -291,7 +300,8 @@ public class ParametricAggregationImplementation
                 Method inputFunction,
                 Optional<Method> removeInputFunction,
                 Method outputFunction,
-                Optional<Method> combineFunction)
+                Optional<Method> combineFunction,
+                Optional<Method> isStateNullFunction)
         {
             // rewrite data passed directly
             this.aggregationDefinition = aggregationDefinition;
@@ -338,6 +348,7 @@ public class ParametricAggregationImplementation
             inputHandle = methodHandle(inputFunction);
             removeInputHandle = removeInputFunction.map(Reflection::methodHandle);
             combineHandle = combineFunction.map(Reflection::methodHandle);
+            isStateNullHandle = isStateNullFunction.map(Reflection::methodHandle);
             outputHandle = methodHandle(outputFunction);
         }
 
@@ -386,7 +397,8 @@ public class ParametricAggregationImplementation
                     combineDependencies,
                     outputDependencies,
                     inputParameterKinds,
-                    hasAggregationFunctionGroupIdParam);
+                    hasAggregationFunctionGroupIdParam,
+                    isStateNullHandle);
         }
 
         public static ParametricAggregationImplementation parseImplementation(
@@ -396,9 +408,10 @@ public class ParametricAggregationImplementation
                 Method inputFunction,
                 Optional<Method> removeInputFunction,
                 Method outputFunction,
-                Optional<Method> combineFunction)
+                Optional<Method> combineFunction,
+                Optional<Method> isStateNullFunction)
         {
-            return new Parser(aggregationDefinition, name, stateDetails, inputFunction, removeInputFunction, outputFunction, combineFunction).get();
+            return new Parser(aggregationDefinition, name, stateDetails, inputFunction, removeInputFunction, outputFunction, combineFunction, isStateNullFunction).get();
         }
 
         private static List<AggregationParameterKind> parseInputParameterKinds(Method method)

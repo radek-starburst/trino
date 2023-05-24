@@ -23,6 +23,7 @@ import io.trino.spi.function.BlockPosition;
 import io.trino.spi.function.CombineFunction;
 import io.trino.spi.function.Description;
 import io.trino.spi.function.InputFunction;
+import io.trino.spi.function.IsStateNullFunction;
 import io.trino.spi.function.LiteralParameters;
 import io.trino.spi.function.OutputFunction;
 import io.trino.spi.function.SqlType;
@@ -103,30 +104,42 @@ public final class DecimalSumAggregation
             @AggregationState NullableLongState  overflowState,
             @AggregationState NullableInt128State otherDecimalState,
             @AggregationState NullableLongState otherOverflowState,
-            @GroupId long groupId)
-    {
+            @GroupId long groupId) {
         long[] decimal = decimalState.getArray(groupId);
         int decimalOffset = decimalState.getArrayOffset(groupId);
         long[] otherDecimal = otherDecimalState.getArray(groupId);
         int otherDecimalOffset = otherDecimalState.getArrayOffset(groupId);
 
-        long overflow = addWithOverflow(
-                decimal[decimalOffset],
-                decimal[decimalOffset + 1],
-                otherDecimal[otherDecimalOffset],
-                otherDecimal[otherDecimalOffset + 1],
-                decimal,
-                decimalOffset);
-
-        decimalState.setIsNotNull(groupId, decimalState.isNotNull(groupId) | otherDecimalState.isNotNull(groupId));
-
-        boolean isOverflowStateNull = otherOverflowState.isNull(groupId);
-        int isOtherOverflowNull = isOverflowStateNull ? 1 : 0;
-        if (overflow != 0 || isOtherOverflowNull == 0) {
-            overflowState.setValue(groupId, overflowState.getValue(groupId) + overflow + otherOverflowState.getValue(groupId) * isOtherOverflowNull);
-            overflowState.setNull(groupId, false);
+        if (decimalState.isNotNull(groupId)) {
+            long overflow = addWithOverflow(
+                    decimal[decimalOffset],
+                    decimal[decimalOffset + 1],
+                    otherDecimal[otherDecimalOffset],
+                    otherDecimal[otherDecimalOffset + 1],
+                    decimal,
+                    decimalOffset);
+            if (overflow != 0) {
+                overflowState.setValue(groupId, Math.addExact(overflow, otherOverflowState.getValue(groupId)));
+                overflowState.setNull(groupId, false);
+            }
+        } else {
+            decimalState.setIsNotNull(groupId, true);
+            decimal[decimalOffset] = otherDecimal[otherDecimalOffset];
+            decimal[decimalOffset + 1] = otherDecimal[otherDecimalOffset + 1];
+            otherOverflowState.setValue(groupId, otherOverflowState.getValue(groupId));
+            otherOverflowState.setNull(groupId, otherOverflowState.isNull(groupId));
         }
     }
+
+    @IsStateNullFunction
+    public static boolean isStateNull(
+            @AggregationState NullableInt128State decimalState,
+            @AggregationState NullableLongState overflowState,
+            @GroupId long groupId
+    ) {
+        return !decimalState.isNotNull(groupId);
+    }
+
 
     @OutputFunction("decimal(38,s)")
     public static void outputLongDecimal(
